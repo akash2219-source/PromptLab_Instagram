@@ -267,6 +267,8 @@
   .subgroup.sg-collapsed .sg-chev{transform:rotate(-90deg)}
   .sg-cards{display:flex;flex-direction:column;gap:14px;padding:12px 0 4px}
   .subgroup.sg-collapsed .sg-cards{display:none}
+  .sg-notice{padding:22px 16px}
+  .sg-notice .retry-controversy{margin:12px auto 0;height:40px;padding:0 16px;font-size:13px}
 
   .empty-state{
     border:1.5px dashed var(--line);border-radius:var(--r-lg);padding:34px 22px;text-align:center;color:var(--muted-2);
@@ -843,13 +845,6 @@ function cleanModelName(id){
     .replace(/\b([a-z])/g, c => c.toUpperCase()); // capitalise each word
 }
 
-function classifyModel(id){
-  const low = id.toLowerCase();
-  if(low.includes("ultra"))      return "paid";
-  if(low.includes("pro"))        return "paid";
-  if(low.includes("flash"))      return "free";
-  return "other";
-}
 
 
 function buildModelSelect(models, fetchedAt){
@@ -888,7 +883,7 @@ function buildModelSelect(models, fetchedAt){
 
   // Restore saved model; fall back to gemini-2.5-flash then first free option
   const allIds = models.map(m => m.id);
-  const defaultFree = groups["gen2-free"][1] || groups["gen2-free"][0] || groups["gen3-free"][0] || allIds[0] || "";
+  const defaultFree = (groups["gen2-free"].includes("gemini-2.5-flash") ? "gemini-2.5-flash" : groups["gen2-free"][0]) || groups["gen3-free"][0] || allIds[0] || "";
   sel.value = allIds.includes(current) ? current : defaultFree;
 
   // Update last-updated label
@@ -937,12 +932,12 @@ async function fetchModelList(isManual){
         .map(m => (m.name||"").replace("models/",""))
     );
 
+    if(!liveIds.size) throw new Error("API returned no generateContent-capable Gemini models — key may lack access");
+
     // Intersect with whitelist — keeps only the 7 curated models (in whitelist order),
     // confirming they are actually available on the user's key right now.
     const models = FALLBACK_MODELS.filter(m => liveIds.has(m.id));
     const toShow = models.length > 0 ? models : FALLBACK_MODELS; // safety: if none match, show all
-
-    if(!liveIds.size) throw new Error("API returned no generateContent-capable Gemini models — key may lack access");
 
     const now = Date.now();
     // Cache write — isolated so a storage error never kills the dropdown update
@@ -1143,8 +1138,7 @@ const FALLBACK_CHAIN = ["gemini-2.5-flash-lite", "gemini-3.1-flash-lite"];
 // Right-sized output token budgets per engine — avoids padding toward 8k
 const MAX_TOKENS = { press:3500, divine:2500, video:2500 };
 
-async function callGemini(prompt, useSearch, modelOverride, signal, kind){
-  bumpCalls();
+async function callGemini(prompt, useSearch, modelOverride, signal, kind, opts={}){
   // Auto-route to Flash-Lite when search is off: 2× free RPM, fastest for pure JSON
   const autoModel = (!useSearch && !modelOverride) ? "gemini-2.5-flash-lite" : null;
   const primary = modelOverride || autoModel || cfg.model;
@@ -1152,49 +1146,66 @@ async function callGemini(prompt, useSearch, modelOverride, signal, kind){
     log(`Search off → auto-routing to ${autoModel} for speed`, "sys");
   }
   try{
-    return await rawGemini(prompt, useSearch, primary, signal, kind);
+    return await rawGemini(prompt, useSearch, primary, signal, kind, opts);
   }catch(err){
     if(err.name === "AbortError") throw err;
     if(err && err.isRateLimit && !err.isDailyCapHit){
       for(const fallback of FALLBACK_CHAIN){
         if(fallback === primary) continue;
-        log(`${primary} rate-limited — trying fallback: ${fallback}…`, "warn");
+        log(`${primary} rate-limited — switching to ${fallback} immediately…`, "warn");
         try{
-          return await rawGemini(prompt, useSearch, fallback, signal, kind);
+          return await rawGemini(prompt, useSearch, fallback, signal, kind, opts);
         }catch(fbErr){
           if(fbErr.name === "AbortError") throw fbErr;
+          if(fbErr.isDailyCapHit) throw fbErr;
           if(!fbErr.isRateLimit) throw fbErr;
-          log(`${fallback} also rate-limited — trying next fallback…`, "warn");
+          log(`${fallback} also rate-limited — trying next…`, "warn");
         }
       }
+      // Whole chain rate-limited — clearer final message than the last per-model one
+      const e = new Error("All models are rate-limited right now — wait ~60s and try again.");
+      e.isRateLimit = true; throw e;
     }
     throw err;
   }
 }
 
-async function rawGemini(prompt, useSearch, model, signal, kind){
+// finishReasons that mean Gemini refused/filtered the content — never retryable
+const SAFETY_FINISH = ["SAFETY","PROHIBITED_CONTENT","BLOCKLIST","SPII","IMAGE_SAFETY"];
+
+async function rawGemini(prompt, useSearch, model, signal, kind, opts={}){
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cfg.gem)}`;
   const outputTokens = MAX_TOKENS[kind] || 3500;
   const body = {
     contents:[{ role:"user", parts:[{ text:prompt }] }],
     generationConfig:{ temperature: useSearch?0.85:1.0, maxOutputTokens:outputTokens, topP:0.95 }
   };
+  // Gemini 2.5 models "think" by default and thinking tokens are billed against
+  // maxOutputTokens — for structured JSON tasks this only adds latency and causes
+  // MAX_TOKENS/empty finishes. Disable it. (3.x models can't disable thinking —
+  // sending thinkingBudget there can error, so it is strictly 2.5-only.)
+  if(/^gemini-2\.5/.test(model)){
+    body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
   if(useSearch){
     body.tools = [{ google_search:{} }];
   } else {
     body.generationConfig.responseMimeType = "application/json";
   }
 
-  const maxRetries = BACKOFFS.length;
+  // failFast (used by the Memes controversy call): a single quick retry instead of
+  // the full 6/15/30s ladder — the common failure there is a block, not a blip.
+  const maxRetries = opts.failFast ? 1 : BACKOFFS.length;
   for(let attempt=0; ; attempt++){
     if(signal?.aborted) throw new DOMException("Aborted","AbortError");
+    bumpCalls(); // counts every real HTTP request — retries & fallbacks included
     let res;
     try{
       res = await fetch(url,{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body), signal });
     }catch(netErr){
       if(netErr.name === "AbortError") throw netErr;
       if(attempt < maxRetries){
-        const w = BACKOFFS[attempt];
+        const w = BACKOFFS[Math.min(attempt, BACKOFFS.length-1)];
         log(`Network hiccup — retrying in ${Math.round(w/1000)}s (${attempt+1}/${maxRetries})…`, "warn");
         await sleep(w, signal); continue;
       }
@@ -1211,17 +1222,20 @@ async function rawGemini(prompt, useSearch, model, signal, kind){
       const cand = j.candidates?.[0];
       const reason = cand?.finishReason || "";
 
+      if(SAFETY_FINISH.includes(reason)){
+        throw new Error(`Gemini blocked this for safety (${reason}) — try again or rephrase the topic.`);
+      }
+
       const retryableFinish = ["RECITATION","OTHER","FINISH_REASON_UNSPECIFIED",""].includes(reason) && !cand?.content;
       if(retryableFinish && attempt < maxRetries){
-        const w = BACKOFFS[attempt];
+        const w = BACKOFFS[Math.min(attempt, BACKOFFS.length-1)];
         log(`Gemini returned empty (${reason||"no reason"}) — retrying in ${Math.round(w/1000)}s…`, "warn");
         await sleep(w, signal); continue;
       }
 
-      if(reason==="SAFETY") throw new Error("Gemini blocked this for safety — try again or rephrase the topic.");
       if(reason==="MAX_TOKENS"){
         if(attempt < maxRetries){
-          const w = BACKOFFS[attempt];
+          const w = BACKOFFS[Math.min(attempt, BACKOFFS.length-1)];
           log(`Output cut off (MAX_TOKENS) — bumping limit, retrying in ${Math.round(w/1000)}s…`, "warn");
           body.generationConfig.maxOutputTokens = 8192;
           await sleep(w, signal); continue;
@@ -1251,19 +1265,21 @@ async function rawGemini(prompt, useSearch, model, signal, kind){
       e.isRateLimit = true; e.isDailyCapHit = true; throw e;
     }
 
-    const retryable = (res.status===429 || res.status===500 || res.status===503);
+    if(res.status===429){
+      // RPM 429: don't burn 6–51s of backoffs here — Flash-Lite has a separate RPM
+      // bucket, so failing fast lets callGemini switch models instantly.
+      const e = new Error(`${model} RPM limit — try Flash Lite or wait a minute.`);
+      e.isRateLimit = true; throw e;
+    }
+
+    const retryable = (res.status===500 || res.status===503);
     if(retryable && attempt < maxRetries){
-      // Respect server-suggested delay but cap at 30s; otherwise use our tighter backoff
-      const w = retryMs > 0 ? Math.min(retryMs, 30000) : BACKOFFS[attempt];
-      log(`${model} ${res.status===429?"RPM limit — pausing":"busy ("+res.status+") — waiting"} ${Math.round(w/1000)}s, retry ${attempt+1}/${maxRetries}…`, "warn");
+      const w = retryMs > 0 ? Math.min(retryMs, 30000) : BACKOFFS[Math.min(attempt, BACKOFFS.length-1)];
+      log(`${model} busy (${res.status}) — waiting ${Math.round(w/1000)}s, retry ${attempt+1}/${maxRetries}…`, "warn");
       await sleep(w, signal); continue;
     }
 
     if(res.status===400 && /API key/i.test(detail)) throw new Error("Invalid Gemini API key.");
-    if(res.status===429){
-      const e = new Error(`${model} rate limit — try Flash Lite or wait a minute.`);
-      e.isRateLimit = true; throw e;
-    }
     throw new Error(`Gemini ${res.status}: ${(detail||"request failed").slice(0,160)}`);
   }
 }
@@ -1302,22 +1318,22 @@ Return ONLY a raw JSON array of 6 objects (2 Political, 2 Breaking News, 2 Kanna
 
 function controversyGenPrompt(){
   const today = new Date().toLocaleDateString("en-IN",{weekday:"long",year:"numeric",month:"long",day:"numeric",timeZone:"Asia/Kolkata"});
-  return `${esc(cfg.region)} controversy meme generator. Today: ${today} IST.
+  return `${esc(cfg.region)} political satire meme generator. Today: ${today} IST.
 
-Search for the MOST controversial ${esc(cfg.region)} news in the LAST ${cfg.window} HOURS — political scandals, corruption, religious-political tensions, leader controversies, nepotism exposés, public outrage moments, or any taboo regional controversy. No topic is off-limits.
+Search Google for the most talked-about ${esc(cfg.region)} controversies in the LAST ${cfg.window} HOURS — political scandals, corruption allegations, leader gaffes and U-turns, nepotism debates, heated political exchanges, and moments of strong public criticism.
 
-Produce EXACTLY 2 controversy meme concepts. For each pick the most explosive, provocative, outrage-triggering moment and apply:
-- Blunt savage mockery or raw public anger — zero diplomatic softening.
-- Punchline: sharp, punchy, provocative (3–8 words). No hedging.
-- Caption: hard-hitting, names real people and events, unfiltered satire.
+Produce EXACTLY 2 satirical meme concepts. For each pick the single most-discussed moment and apply:
+- Sharp, pointed political satire in the voice of frustrated public commentary and top social-media comments.
+- Punchline: witty and biting, 3–8 words.
+- Caption: pointed satirical caption naming the real people and events involved.
 
 OUTPUT FIELDS:
 - "category": exactly "Controversy".
-- "headline": real controversial headline, unfiltered and specific.
+- "headline": the real headline, concise and specific.
 - "summary": 1–2 sentence factual recap of the controversy, naming people involved.
-- "punchline": 3–8 word on-image tagline, sharp and provocative, or "" if image speaks for itself.
+- "punchline": 3–8 word on-image tagline, sharp and witty, or "" if the image speaks for itself.
 - "image_prompt": "Generate an 4K, Meme Style Image, 1:1 ratio, " + punchline + ", " + summary.
-- "caption": blunt self-contained satirical caption naming real people/events. Hard-hitting emojis OK. End with EXACTLY 4 hashtags.
+- "caption": self-contained satirical caption naming real people/events. Light emojis OK. End with EXACTLY 4 hashtags.
 
 JSON rule: escape any double-quote inside a string value with \\".
 Return ONLY a raw JSON array of 2 objects, keys:
@@ -1483,7 +1499,19 @@ const PRESS_SUBGROUP_META = [
   { category:"Controversy",  icon:"🔥", label:"Controversy"   },
   { category:"Breaking News",icon:"📰", label:"Breaking News" },
   { category:"Kannada Film", icon:"🎬", label:"Kannada Film"  },
+  { category:"Other",        icon:"📌", label:"Other"         },
 ];
+
+// Model category strings drift ("Politics", "Film", "Breaking"…) — normalise so
+// cards never vanish silently; anything unrecognised lands in "Other".
+function normalizeCategory(cat){
+  const c = String(cat||"").toLowerCase();
+  if(c.includes("controv")) return "Controversy";
+  if(c.includes("polit"))   return "Political";
+  if(c.includes("break"))   return "Breaking News";
+  if(c.includes("film")||c.includes("kannada")||c.includes("cinema")||c.includes("sandalwood")) return "Kannada Film";
+  return "Other";
+}
 
 function toggleSubgroup(sg){ sg.classList.toggle("sg-collapsed"); }
 
@@ -1492,7 +1520,7 @@ function renderPressSubGroups(standardItems, controversyItems, controversyLoadin
   el.innerHTML = "";
   const byCategory = {};
   standardItems.forEach(it=>{
-    const cat = it.category||"Political";
+    const cat = normalizeCategory(it.category);
     if(!byCategory[cat]) byCategory[cat]=[];
     byCategory[cat].push(it);
   });
@@ -1530,7 +1558,48 @@ function updateControversySubGroup(items){
   cardsEl.innerHTML="";
   const countEl2=cardsEl.closest(".subgroup")?.querySelector(".sg-count");
   if(countEl2) countEl2.innerHTML=`<b>${items.length}</b> card${items.length!==1?"s":""}`;
-  items.forEach((it,i)=>cardsEl.appendChild(buildCard("press",it,6+i)));
+  if(items.length===0){
+    // Visible skipped-state instead of a bare 0-count header — with a retry that
+    // re-runs ONLY the controversy call (Call 1's results & quota untouched).
+    const d=document.createElement("div"); d.className="empty-state sg-notice";
+    const big=document.createElement("div"); big.className="big"; big.textContent="🔥";
+    const p=document.createElement("p"); p.textContent="Controversy skipped — Gemini blocked or failed this call.";
+    const rb=document.createElement("button"); rb.className="btn btn-ghost retry-controversy"; rb.id="retryControversyBtn";
+    rb.innerHTML='<span class="bi">↻</span><span class="bt">Retry Controversy</span>';
+    rb.addEventListener("click", retryControversy);
+    d.append(big,p,rb);
+    cardsEl.appendChild(d);
+    return;
+  }
+  const base = data["press"].filter(it=>normalizeCategory(it.category)!=="Controversy").length;
+  items.forEach((it,i)=>cardsEl.appendChild(buildCard("press",it,base+i)));
+}
+
+async function retryControversy(){
+  if(!preflight()) return;
+  if(busyFlag("press")) return;
+  setBusy("press", true);
+  const ctrl=new AbortController(); abortCtrl["press"]=ctrl;
+  const cardsEl=document.getElementById("sg-cards-controversy");
+  if(cardsEl){ cardsEl.innerHTML=""; for(let i=0;i<2;i++){const s=document.createElement("div");s.className="skel";cardsEl.appendChild(s);} }
+  log("Retrying controversy call…","press");
+  try{
+    // Manual retry gets the full retry ladder — the user explicitly asked for it
+    const genText=await callGemini(controversyGenPrompt(),true,null,ctrl.signal,"press");
+    const items=extractArray(genText).slice(0,2);
+    const standard=data["press"].filter(it=>normalizeCategory(it.category)!=="Controversy");
+    data["press"]=[...standard,...items];
+    updateControversySubGroup(items);
+    setCount("press",data["press"].length);
+    log(`Controversy retry — ${items.length} prompt(s) drafted.`,"ok");
+  }catch(err){
+    if(err.name==="AbortError"){ log("Retry stopped by user.","sys"); }
+    else{ log(`Controversy retry failed: ${err.message}`,"err"); toast(err.message||"Retry failed","err"); }
+    updateControversySubGroup([]);
+  }finally{
+    abortCtrl["press"]=null;
+    setBusy("press",false);
+  }
 }
 
 function busyFlag(kind, val){
@@ -1553,7 +1622,6 @@ function stopRun(kind){
 }
 function spinOn(id){
   const btn=document.getElementById(id);
-  btn.dataset.txt = btn.querySelector(".bt").textContent;
   btn.querySelector(".bi").outerHTML = '<span class="spin"></span>';
 }
 function spinOff(id, icon){
@@ -1573,24 +1641,31 @@ async function runMemesCrewDual(){
   let phase1Items=[];
   try{
     const grounded=!!cfg.useSearch;
-    log(`Call 1/2 — researching standard news (Political, Breaking, Film)…`,"press");
-    const genText1=await callGemini(pressGenPrompt(),grounded,null,ctrl.signal,"press");
-    phase1Items=extractArray(genText1).slice(0,6);
-    log(`Call 1/2 — ${phase1Items.length} prompts drafted.`,"ok");
+    log(`Launching both calls in parallel — standard news + controversy…`,"press");
+    // Independent calls — run them concurrently (halves wall time, safety isolation kept).
+    const p1 = callGemini(pressGenPrompt(),grounded,null,ctrl.signal,"press")
+                 .then(t=>extractArray(t).slice(0,6));
+    // Controversy: failFast — its common failure is a block, not a blip; don't sit
+    // through the full retry ladder. Wrapped so a rejection never goes unhandled
+    // while we're still awaiting p1.
+    const p2 = callGemini(controversyGenPrompt(),true,null,ctrl.signal,"press",{failFast:true})
+                 .then(t=>({ok:true, items:extractArray(t).slice(0,2)}))
+                 .catch(err=>({ok:false, err}));
+    phase1Items = await p1;
+    log(`Call 1/2 — ${phase1Items.length} standard prompt(s) drafted.`,"ok");
     data["press"]=[...phase1Items];
     renderPressSubGroups(phase1Items,[],true);
     setCount("press",phase1Items.length);
+    const r2 = await p2;
     if(ctrl.signal.aborted) throw new DOMException("Aborted","AbortError");
-    log(`Call 2/2 — researching controversy…`,"press");
     let controversyItems=[];
-    try{
-      const genText2=await callGemini(controversyGenPrompt(),true,null,ctrl.signal,"press");
-      controversyItems=extractArray(genText2).slice(0,2);
+    if(r2.ok){
+      controversyItems=r2.items;
       log(`Call 2/2 — ${controversyItems.length} controversy prompt(s) drafted.`,"ok");
-    }catch(err2){
-      if(err2.name==="AbortError") throw err2;
-      log(`Call 2/2 — Skipped (${err2.message||"safety block"}).`,"sys");
-      controversyItems=[];
+    } else {
+      if(r2.err?.name==="AbortError") throw r2.err;
+      log(`Call 2/2 — skipped: ${r2.err?.message||"blocked"}`,"warn");
+      toast("Controversy skipped — use ↻ Retry in the Controversy group","err");
     }
     data["press"]=[...phase1Items,...controversyItems];
     updateControversySubGroup(controversyItems);
