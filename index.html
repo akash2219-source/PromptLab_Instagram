@@ -248,6 +248,26 @@
 
   .cards{display:flex;flex-direction:column;gap:14px}
 
+  /* ---------- Press lane sub-groups ---------- */
+  .subgroup{display:flex;flex-direction:column;gap:0}
+  .subgroup+.subgroup{margin-top:10px}
+  .subgroup-row{
+    display:flex;align-items:center;gap:9px;padding:9px 13px;
+    border-radius:var(--r-sm);border:1px solid var(--line-soft);
+    background:rgba(255,255,255,.022);cursor:pointer;user-select:none;
+    font-size:13px;font-weight:600;color:var(--text);
+    transition:background .15s ease;
+  }
+  .subgroup-row:hover{background:rgba(255,255,255,.04)}
+  .sg-icon{font-size:14px;flex:none}
+  .sg-label{flex:1;letter-spacing:.01em}
+  .sg-count{font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
+  .sg-count b{color:var(--press)}
+  .sg-chev{flex:none;color:var(--muted-2);transition:transform .25s ease;display:flex;align-items:center}
+  .subgroup.sg-collapsed .sg-chev{transform:rotate(-90deg)}
+  .sg-cards{display:flex;flex-direction:column;gap:14px;padding:12px 0 4px}
+  .subgroup.sg-collapsed .sg-cards{display:none}
+
   .empty-state{
     border:1.5px dashed var(--line);border-radius:var(--r-lg);padding:34px 22px;text-align:center;color:var(--muted-2);
     background:rgba(255,255,255,.012);
@@ -498,9 +518,9 @@
           <span class="ic">🗞️</span>
           <div>
             <h3>Karnataka Meme Crew</h3>
-            <div class="sub">grounded · live news · 6 prompts (Political · Breaking · Film)</div>
+            <div class="sub">grounded · live news · 8 prompts (Political · Controversy · Breaking · Film)</div>
           </div>
-          <span class="count" style="margin-left:auto"><b id="countPress">0</b>/6</span>
+          <span class="count" style="margin-left:auto"><b id="countPress">0</b>/8</span>
           <button class="laneToggle" id="laneToggle-press" data-lane="press" aria-label="Collapse lane" aria-expanded="true" title="Hide/show this lane">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
           </button>
@@ -508,7 +528,7 @@
         <div class="cards" id="cardsPress">
           <div class="empty-state">
             <div class="big">🗞️</div>
-            <p>No memes yet. Run the crew to pull live Karnataka headlines and craft 6 meme prompts — Political, Breaking News &amp; Kannada Film — + captions.</p>
+            <p>No memes yet. Run the crew to pull live Karnataka headlines and craft 8 meme prompts — Political, Controversy, Breaking News &amp; Kannada Film — + captions.</p>
           </div>
         </div>
       </div>
@@ -1278,8 +1298,30 @@ OUTPUT FIELDS:
 
 JSON rule: escape any double-quote inside a string value with \\".
 Return ONLY a raw JSON array of 6 objects (2 Political, 2 Breaking News, 2 Kannada Film), keys:
-"category","headline","summary","image_prompt","punchline","caption".`;
-}
+"category","headline","summary","image_prompt","punchline","caption".`;}
+
+function controversyGenPrompt(){
+  const today = new Date().toLocaleDateString("en-IN",{weekday:"long",year:"numeric",month:"long",day:"numeric",timeZone:"Asia/Kolkata"});
+  return `${esc(cfg.region)} controversy meme generator. Today: ${today} IST.
+
+Search for the MOST controversial ${esc(cfg.region)} news in the LAST ${cfg.window} HOURS — political scandals, corruption, religious-political tensions, leader controversies, nepotism exposés, public outrage moments, or any taboo regional controversy. No topic is off-limits.
+
+Produce EXACTLY 2 controversy meme concepts. For each pick the most explosive, provocative, outrage-triggering moment and apply:
+- Blunt savage mockery or raw public anger — zero diplomatic softening.
+- Punchline: sharp, punchy, provocative (3–8 words). No hedging.
+- Caption: hard-hitting, names real people and events, unfiltered satire.
+
+OUTPUT FIELDS:
+- "category": exactly "Controversy".
+- "headline": real controversial headline, unfiltered and specific.
+- "summary": 1–2 sentence factual recap of the controversy, naming people involved.
+- "punchline": 3–8 word on-image tagline, sharp and provocative, or "" if image speaks for itself.
+- "image_prompt": "Generate an 4K, Meme Style Image, 1:1 ratio, " + punchline + ", " + summary.
+- "caption": blunt self-contained satirical caption naming real people/events. Hard-hitting emojis OK. End with EXACTLY 4 hashtags.
+
+JSON rule: escape any double-quote inside a string value with \\".
+Return ONLY a raw JSON array of 2 objects, keys:
+"category","headline","summary","image_prompt","punchline","caption".`;}
 
 /* ============================================================
    PROMPT BUILDERS — VEDIC ENGINE (IMAGE AGENT)
@@ -1428,12 +1470,69 @@ function extractArray(text){
    ============================================================ */
 const KIND_META = {
   press:  { runBtn:"runMemes",  icon:"🗞️", genPrompt:pressGenPrompt,  promptKey:"image_prompt", emptyIcon:"🗞️", maxItems:6,
-            emptyMsg:"No memes yet. Run the crew to pull live Karnataka headlines and craft 6 meme prompts — Political, Breaking News & Kannada Film — + captions." },
+            emptyMsg:"No memes yet. Run the crew to pull live Karnataka headlines and craft 8 meme prompts — Political, Controversy, Breaking News & Kannada Film — + captions." },
   divine: { runBtn:"runImage",  icon:"🕉️", genPrompt:imageGenPrompt,  promptKey:"image_prompt",  emptyIcon:"🕉️", maxItems:2,
             emptyMsg:"No prompts yet. Run the Vedic Image Agent for 2 image prompts: Vedic style + Cinematic style." },
   video:  { runBtn:"runVideo",  icon:"🎞️", genPrompt:videoGenPrompt,  promptKey:"video_prompt",  emptyIcon:"🎞️", maxItems:2,
             emptyMsg:"No prompts yet. Run the Vedic Video Agent for 2 video prompts: Vedic style + Cinematic style." }
 };
+
+// Sub-group definitions for the Press lane — order = display order
+const PRESS_SUBGROUP_META = [
+  { category:"Political",    icon:"🗞", label:"Political"     },
+  { category:"Controversy",  icon:"🔥", label:"Controversy"   },
+  { category:"Breaking News",icon:"📰", label:"Breaking News" },
+  { category:"Kannada Film", icon:"🎬", label:"Kannada Film"  },
+];
+
+function toggleSubgroup(sg){ sg.classList.toggle("sg-collapsed"); }
+
+function renderPressSubGroups(standardItems, controversyItems, controversyLoading){
+  const el = laneEl("press");
+  el.innerHTML = "";
+  const byCategory = {};
+  standardItems.forEach(it=>{
+    const cat = it.category||"Political";
+    if(!byCategory[cat]) byCategory[cat]=[];
+    byCategory[cat].push(it);
+  });
+  controversyItems.forEach(it=>{
+    if(!byCategory["Controversy"]) byCategory["Controversy"]=[];
+    byCategory["Controversy"].push(it);
+  });
+  let gIdx = 0;
+  PRESS_SUBGROUP_META.forEach(({category,icon,label})=>{
+    const items = byCategory[category]||[];
+    const isC = (category==="Controversy");
+    const show = items.length>0 || (isC && controversyLoading);
+    if(!show) return;
+    const sg=document.createElement("div"); sg.className="subgroup";
+    const row=document.createElement("div"); row.className="subgroup-row";
+    const disp = (controversyLoading&&isC) ? "…" : items.length;
+    row.innerHTML=`<span class="sg-icon">${icon}</span><span class="sg-label">${label}</span><span class="sg-count"><b>${disp}</b> card${items.length!==1?"s":""}</span><span class="sg-chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" width="14" height="14"><path d="m6 9 6 6 6-6"/></svg></span>`;
+    row.addEventListener("click",()=>toggleSubgroup(sg));
+    sg.appendChild(row);
+    const cardsEl=document.createElement("div"); cardsEl.className="sg-cards";
+    cardsEl.id="sg-cards-"+category.replace(/\s+/g,"-").toLowerCase();
+    if(controversyLoading&&isC){
+      for(let i=0;i<2;i++){const s=document.createElement("div");s.className="skel";cardsEl.appendChild(s);}
+    } else {
+      items.forEach(it=>{cardsEl.appendChild(buildCard("press",it,gIdx));gIdx++;});
+    }
+    sg.appendChild(cardsEl); el.appendChild(sg);
+  });
+  setCount("press", standardItems.length+controversyItems.length);
+}
+
+function updateControversySubGroup(items){
+  const cardsEl=document.getElementById("sg-cards-controversy");
+  if(!cardsEl) return;
+  cardsEl.innerHTML="";
+  const countEl2=cardsEl.closest(".subgroup")?.querySelector(".sg-count");
+  if(countEl2) countEl2.innerHTML=`<b>${items.length}</b> card${items.length!==1?"s":""}`;
+  items.forEach((it,i)=>cardsEl.appendChild(buildCard("press",it,6+i)));
+}
+
 function busyFlag(kind, val){
   if(kind==="press") { if(val!==undefined) busyPress=val; return busyPress; }
   if(kind==="divine"){ if(val!==undefined) busyDivine=val; return busyDivine; }
@@ -1462,7 +1561,64 @@ function spinOff(id, icon){
   const sp=btn.querySelector(".spin"); if(sp) sp.outerHTML = `<span class="bi">${icon}</span>`;
 }
 
+async function runMemesCrewDual(){
+  if(!preflight()) return;
+  if(busyFlag("press")) return;
+  setBusy("press", true);
+  spinOn("runMemes");
+  const el=laneEl("press"); el.innerHTML="";
+  for(let i=0;i<6;i++){const s=document.createElement("div");s.className="skel";el.appendChild(s);}
+  setCount("press",0);
+  const ctrl=new AbortController(); abortCtrl["press"]=ctrl;
+  let phase1Items=[];
+  try{
+    const grounded=!!cfg.useSearch;
+    log(`Call 1/2 — researching standard news (Political, Breaking, Film)…`,"press");
+    const genText1=await callGemini(pressGenPrompt(),grounded,null,ctrl.signal,"press");
+    phase1Items=extractArray(genText1).slice(0,6);
+    log(`Call 1/2 — ${phase1Items.length} prompts drafted.`,"ok");
+    data["press"]=[...phase1Items];
+    renderPressSubGroups(phase1Items,[],true);
+    setCount("press",phase1Items.length);
+    if(ctrl.signal.aborted) throw new DOMException("Aborted","AbortError");
+    log(`Call 2/2 — researching controversy…`,"press");
+    let controversyItems=[];
+    try{
+      const genText2=await callGemini(controversyGenPrompt(),true,null,ctrl.signal,"press");
+      controversyItems=extractArray(genText2).slice(0,2);
+      log(`Call 2/2 — ${controversyItems.length} controversy prompt(s) drafted.`,"ok");
+    }catch(err2){
+      if(err2.name==="AbortError") throw err2;
+      log(`Call 2/2 — Skipped (${err2.message||"safety block"}).`,"sys");
+      controversyItems=[];
+    }
+    data["press"]=[...phase1Items,...controversyItems];
+    updateControversySubGroup(controversyItems);
+    setCount("press",data["press"].length);
+    log(`Prompts ready on screen.`,"ok");
+  }catch(err){
+    if(err.name==="AbortError"){
+      log("Run stopped by user.","sys");
+      if(phase1Items.length>0){
+        data["press"]=[...phase1Items];
+        renderPressSubGroups(phase1Items,[],false);
+        setCount("press",phase1Items.length);
+        log("Showing Call 1 results.","sys");
+      } else { resetLane("press"); }
+    } else {
+      log(err.message||String(err),"err");
+      renderError("press",err.message||String(err));
+      toast(err.message||"Something went wrong","err");
+    }
+  }finally{
+    abortCtrl["press"]=null;
+    spinOff("runMemes","🗞️");
+    setBusy("press",false);
+  }
+}
+
 async function runCrew(kind){
+  if(kind==="press"){ return runMemesCrewDual(); }
   if(!preflight()) return;
   if(busyFlag(kind)) return;
   setBusy(kind, true);
@@ -1470,32 +1626,21 @@ async function runCrew(kind){
   spinOn(meta.runBtn);
   showSkeletons(kind);
   log(`Crew — starting…`, kind);
-
   const ctrl = new AbortController();
   abortCtrl[kind] = ctrl;
-
   try{
     const grounded = !!cfg.useSearch;
-    if(kind==="press"){
-      log(grounded
-        ? `Scout: researching (live search ON, last ${cfg.window}h IST)…`
-        : `Scout: live search OFF — drafting from model knowledge (quota-saving mode)…`, kind);
-    } else {
-      log(grounded
-        ? `Scout: researching event significance (live search ON, next ${cfg.lookahead}h IST)…`
-        : `Scout: live search OFF — drafting from model knowledge (quota-saving mode)…`, kind);
-    }
-    const lookaheadHours = (kind==="divine" || kind==="video") ? cfg.lookahead : null;
-    const genText = await callGemini(meta.genPrompt(lookaheadHours), grounded, null, ctrl.signal, kind);
-    let items = extractArray(genText).slice(0, meta.maxItems || 3);
+    log(grounded
+      ? `Scout: researching event significance (live search ON, next ${cfg.lookahead}h IST)…`
+      : `Scout: live search OFF — drafting from model knowledge (quota-saving mode)…`, kind);
+    const genText = await callGemini(meta.genPrompt(cfg.lookahead), grounded, null, ctrl.signal, kind);
+    let items = extractArray(genText).slice(0, meta.maxItems||2);
     log(`Crew drafted ${items.length} prompt(s).`, kind);
-
     data[kind] = items;
     renderCards(kind);
     log(`Prompts ready on screen.`, "ok");
-
   }catch(err){
-    if(err.name === "AbortError"){
+    if(err.name==="AbortError"){
       log("Run stopped by user.", "sys");
       resetLane(kind);
     } else {
