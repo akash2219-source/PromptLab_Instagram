@@ -503,7 +503,7 @@
       <div class="deck-head">
         <p class="eyebrow">prompt &amp; caption studio</p>
         <h2>Meme <span class="red">Prompt</span>.<br>Copy &amp; paste anywhere.</h2>
-        <p>One crew of agents turns live Karnataka news — politics, breaking news &amp; Kannada film — into 6 meme prompts, auto-picking the sharpest angle for each story.</p>
+        <p>One crew of agents turns live Karnataka news — controversies, breaking news &amp; Kannada film — into 6 meme prompts with trend-aware captions, auto-picking the sharpest angle for each story.</p>
         <div class="runs">
           <button class="btn btn-primary" id="runMemes">
             <span class="bi">🗞️</span><span class="bt">Run Memes Crew</span>
@@ -537,9 +537,9 @@
           <span class="ic">🗞️</span>
           <div>
             <h3>Karnataka Meme Crew</h3>
-            <div class="sub">grounded · live news · 8 prompts (Political · Controversy · Breaking · Film)</div>
+            <div class="sub">grounded · live news · 6 prompts (Controversy · Breaking · Film)</div>
           </div>
-          <span class="count" style="margin-left:auto"><b id="countPress">0</b>/8</span>
+          <span class="count" style="margin-left:auto"><b id="countPress">0</b>/6</span>
           <button class="laneToggle" id="laneToggle-press" data-lane="press" aria-label="Collapse lane" aria-expanded="true" title="Hide/show this lane">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
           </button>
@@ -547,7 +547,7 @@
         <div class="cards" id="cardsPress">
           <div class="empty-state">
             <div class="big">🗞️</div>
-            <p>No memes yet. Run the crew to pull live Karnataka headlines and craft 8 meme prompts — Political, Controversy, Breaking News &amp; Kannada Film — + captions.</p>
+            <p>No memes yet. Run the crew to pull live Karnataka headlines and craft 6 meme prompts — Controversy, Breaking News &amp; Kannada Film — + trend-aware captions.</p>
           </div>
         </div>
       </div>
@@ -1153,7 +1153,7 @@ const BACKOFFS = [6000, 15000, 30000];
 const FALLBACK_CHAIN = ["gemini-2.5-flash-lite", "gemini-3.1-flash-lite"];
 
 // Right-sized output token budgets per engine — avoids padding toward 8k
-const MAX_TOKENS = { press:3500, divine:2500, video:2500, virality:2600 };
+const MAX_TOKENS = { pressA:3000, pressB:1800, divine:2500, video:2500, virality:2600 };
 
 async function callGemini(prompt, useSearch, modelOverride, signal, kind, opts={}){
   // Auto-route to Flash-Lite when search is off: 2× free RPM, fastest for pure JSON
@@ -1301,69 +1301,76 @@ async function rawGemini(prompt, useSearch, model, signal, kind, opts={}){
   }
 }
 /* ============================================================
-   PROMPT BUILDERS — MEMES
+   PROMPT BUILDERS — MEMES (v9: Political removed, 2 calls, 6 cards)
+   Call A: Breaking News (2) + Controversy (2) — direct/raw wording
+   Call B: Kannada Film (2)
+   Both calls generate complete cards INCLUDING trend-aware captions
+   as split JSON fields (tagline, summary_3line, hashtags[4]) —
+   assembled client-side so hashtags can never land mid-caption.
    ============================================================ */
-function pressGenPrompt(){
+const CAPTION_FIELD_SPEC = `- "tagline": a punchy, self-contained one-liner naming the real event/person — distinct from the on-image punchline. Search current Instagram/Facebook trending caption styles for this kind of story and match that energy (voice, emoji use, phrasing) rather than a generic recap.
+- "summary_3line": the news/context recap in EXACTLY 3 short lines, separated by \\n — neutral and factual, no hashtags, no emojis-only lines.
+- "hashtags": array of EXACTLY 4 strings, each starting with "#", no spaces inside a tag. Pick tags that are CURRENTLY active/trending on Instagram or Facebook for this story (search to check), not generic evergreen tags.
+Do NOT put hashtags inside "tagline" or "summary_3line" — they belong ONLY in the "hashtags" array.`;
+
+function breakingControversyGenPrompt(useDirectWording){
   const today = new Date().toLocaleDateString("en-IN",{weekday:"long",year:"numeric",month:"long",day:"numeric",timeZone:"Asia/Kolkata"});
+  const controversyAngle = useDirectWording
+    ? `Search Google for the most talked-about ${esc(cfg.region)} controversies in the LAST ${cfg.window} HOURS — real political scandals, corruption allegations, leader gaffes and U-turns, nepotism debates, heated exchanges, and moments of strong public criticism. Use the actual news directly — do not soften or generalize the controversy.`
+    : `Search Google for ${esc(cfg.region)} political stories in the LAST ${cfg.window} HOURS that are drawing strong public reaction or debate — sharp, pointed political satire in the voice of frustrated public commentary.`;
   return `${esc(cfg.region)} meme content generator. Today: ${today} IST.
 
-Search Google for trending ${esc(cfg.region)} news in the LAST ${cfg.window} HOURS across 3 categories:
-A) POLITICS — political news, statements, controversies.
-B) BREAKING NEWS (non-political) — civic, weather, sports, business, crime, events.
-C) KANNADA FILM — Sandalwood: releases, box office, casting, awards, controversies.
+Search Google for trending ${esc(cfg.region)} news in the LAST ${cfg.window} HOURS across 2 categories:
+A) BREAKING NEWS (non-political) — civic, weather, sports, business, crime, events.
+B) CONTROVERSY — ${controversyAngle}
 
-Produce EXACTLY 2 meme concepts per category (6 total). For each pick:
+Produce EXACTLY 2 meme concepts per category (4 total). For each pick:
 - The EXACT news moment (specific quote, reaction, U-turn) — never a vague topic.
-- The comedic angle: irony, contrast, overpromising, or surprise.
-- A short on-image punchline (voice of public/top comments) + a witty caption.
+- The comedic/satirical angle: irony, contrast, overpromising, or surprise.
+- A short on-image punchline (voice of public/top comments).
 
-UNIQUENESS RULE: all 6 concepts MUST cover 6 DIFFERENT news stories — never reuse the same story, person-moment, or event across categories. If a story fits two categories, use it in ONE only and pick a different story for the other.
+UNIQUENESS RULE: all 4 concepts MUST cover 4 DIFFERENT stories — Breaking News stories must not overlap with Controversy stories.
 
 Virality: 3-second clarity, minimal text, strong exaggeration + irony, relatable to local sentiment.
 
 OUTPUT FIELDS:
-- "category": exactly "Political", "Breaking News", or "Kannada Film".
+- "category": exactly "Breaking News" or "Controversy".
 - "headline": real news headline, concise and factual.
-- "summary": 1–2 sentence neutral recap so anyone gets the context.
+- "summary": 1 sentence neutral recap for internal use (image prompt only — not the caption).
 - "punchline": 3–8 word on-image tagline, or "" if none needed.
-- "image_prompt":
-  - Political: "Generate an 4K, Meme Style Image, 1:1 ratio, " + punchline + ", " + summary + ", on-image text in a natural Kannada-English (Kanglish) mix, Latin script only".
-  - Breaking News / Kannada Film: "Generate 4k Memes style Image (1:1 ratio), " + punchline + ", " + summary + ", on-image text in a natural Kannada-English (Kanglish) mix, Latin script only".
-- "caption": two parts — (1) self-contained witty caption naming the real event/person, light emojis; (2) then, on a new line, a neutral 2-line summary of the news so anyone gets the full context. End with EXACTLY 4 hashtags on the final line.
+- "image_prompt": "Generate 4k Meme's style Image (1:1 ratio), Text Language Kannada + English (Mix), " + punchline + ", " + summary
+${CAPTION_FIELD_SPEC}
 
 JSON rule: escape any double-quote inside a string value with \\".
-Return ONLY a raw JSON array of 6 objects (2 Political, 2 Breaking News, 2 Kannada Film), keys:
-"category","headline","summary","image_prompt","punchline","caption".`;}
+Return ONLY a raw JSON array of 4 objects (2 Breaking News, 2 Controversy), keys:
+"category","headline","summary","punchline","image_prompt","tagline","summary_3line","hashtags".`;}
 
-function controversyGenPrompt(excludeHeadlines){
+function kannadaFilmGenPrompt(){
   const today = new Date().toLocaleDateString("en-IN",{weekday:"long",year:"numeric",month:"long",day:"numeric",timeZone:"Asia/Kolkata"});
-  const excl = (excludeHeadlines&&excludeHeadlines.length)
-    ? `\nALREADY COVERED — do NOT build on any of these stories, pick DIFFERENT controversies:\n${excludeHeadlines.map(h=>"- "+h).join("\n")}\n`
-    : "";
-  return `${esc(cfg.region)} political satire meme generator. Today: ${today} IST.
-${excl}
+  return `${esc(cfg.region)} Kannada film (Sandalwood) meme content generator. Today: ${today} IST.
 
-Search Google for the most talked-about ${esc(cfg.region)} controversies in the LAST ${cfg.window} HOURS — political scandals, corruption allegations, leader gaffes and U-turns, nepotism debates, heated political exchanges, and moments of strong public criticism.
+Search Google for trending Sandalwood news in the LAST ${cfg.window} HOURS — releases, box office, casting, awards, controversies.
 
-Produce EXACTLY 2 satirical meme concepts covering 2 DIFFERENT controversies. For each pick the single most-discussed moment and apply:
-- Sharp, pointed political satire in the voice of frustrated public commentary and top social-media comments.
-- Punchline: witty and biting, 3–8 words.
-- Caption: pointed satirical caption naming the real people and events involved.
+Produce EXACTLY 2 meme concepts covering 2 DIFFERENT stories. For each pick:
+- The EXACT news moment (specific quote, reaction, milestone) — never a vague topic.
+- The comedic angle: irony, contrast, overpromising, or surprise.
+
+Virality: 3-second clarity, minimal text, strong exaggeration + irony, relatable to local sentiment.
 
 OUTPUT FIELDS:
-- "category": exactly "Controversy".
-- "headline": the real headline, concise and specific.
-- "summary": 1–2 sentence factual recap of the controversy, naming people involved.
-- "punchline": 3–8 word on-image tagline, sharp and witty, or "" if the image speaks for itself.
-- "image_prompt": "Generate an 4K, Meme Style Image, 1:1 ratio, " + punchline + ", " + summary + ", on-image text in a natural Kannada-English (Kanglish) mix, Latin script only".
-- "caption": two parts — (1) self-contained satirical caption naming real people/events, light emojis OK; (2) then, on a new line, a neutral 2-line summary of the controversy. End with EXACTLY 4 hashtags on the final line.
+- "category": exactly "Kannada Film".
+- "headline": real news headline, concise and factual.
+- "summary": 1 sentence neutral recap for internal use (image prompt only — not the caption).
+- "image_prompt": "Generate 4k Meme's style Image (1:1 ratio), Text Language Kannada + English (Mix), " + summary
+${CAPTION_FIELD_SPEC}
 
 JSON rule: escape any double-quote inside a string value with \\".
 Return ONLY a raw JSON array of 2 objects, keys:
-"category","headline","summary","image_prompt","punchline","caption".`;}
+"category","headline","summary","image_prompt","tagline","summary_3line","hashtags".`;}
 
 /* ============================================================
-   DUPLICATE-NEWS DETECTION (Call 1 vs Controversy)
+   DUPLICATE-NEWS DETECTION (Call A vs Call B, cross-call only —
+   in-call uniqueness for Breaking vs Controversy is a prompt rule)
    ============================================================ */
 function normWords(str){
   return String(str||"").toLowerCase().replace(/[^a-z0-9 ]+/g," ").split(/\s+/).filter(w=>w.length>3);
@@ -1374,25 +1381,37 @@ function storiesSimilar(a,b){
   let inter=0; A.forEach(w=>{ if(B.has(w)) inter++; });
   return inter/Math.min(A.size,B.size) >= 0.6;
 }
-function dedupeControversy(standard, controversy){
+function dedupeAcrossCalls(callAItems, callBItems){
   const kept=[], dropped=[];
-  controversy.forEach(c=>{
-    const dupe = standard.some(st=>
-      storiesSimilar(st.headline,c.headline) || storiesSimilar(st.summary,c.summary));
+  callBItems.forEach(c=>{
+    const dupe = callAItems.some(a=>
+      storiesSimilar(a.headline,c.headline) || storiesSimilar(a.summary,c.summary));
     (dupe?dropped:kept).push(c);
   });
   return {kept, dropped};
+}
+function assembleCaption(tagline, summary3line, hashtags){
+  const tag = String(tagline||"").trim();
+  const summary = String(summary3line||"").trim();
+  const tags = (Array.isArray(hashtags)?hashtags:[])
+    .map(h=>String(h||"").trim())
+    .filter(Boolean)
+    .map(h=>h.startsWith("#")?h:"#"+h)
+    .slice(0,4)
+    .join(" ");
+  return [tag, summary, tags].filter(Boolean).join("\n");
 }
 
 /* ============================================================
    PROMPT BUILDER — VIRALITY AGENT (MEMES, 3rd call)
    ============================================================ */
-function extractHashtags(caption){
-  return (String(caption||"").match(/#[A-Za-z0-9_]+/g)||[]).slice(0,6);
+function extractHashtags(it){
+  if(Array.isArray(it?.hashtags) && it.hashtags.length) return it.hashtags.map(h=>String(h||"").trim()).filter(Boolean).slice(0,6);
+  return (String(it?.caption||"").match(/#[A-Za-z0-9_]+/g)||[]).slice(0,6);
 }
 function viralityGenPrompt(items){
   const today = new Date().toLocaleDateString("en-IN",{weekday:"long",year:"numeric",month:"long",day:"numeric",timeZone:"Asia/Kolkata"});
-  const list = items.map((it,i)=>`${i+1}. story: ${it.headline||""} | hashtags: ${extractHashtags(it.caption).join(" ")||"(none)"}`).join("\n");
+  const list = items.map((it,i)=>`${i+1}. story: ${it.headline||""} | hashtags: ${extractHashtags(it).join(" ")||"(none)"}`).join("\n");
   return `Social media virality analyst for ${esc(cfg.region)} Instagram/Facebook meme content. Today: ${today} IST.
 
 Use Google Search to judge, for each numbered item below, how strongly its news story is trending RIGHT NOW (social chatter, news coverage volume, search interest) and how accurate and viral each hashtag currently is on Instagram and Facebook.
@@ -1439,14 +1458,16 @@ Produce EXACTLY 2 image concepts for the SAME event:
 FIELDS (both images share the same event):
 - event_name, day, date, significance (1–2 factual sentences), timings (short IST phrase), key_rituals (2–3 items, comma-separated), god_name (deity or devotional focus), god_significance (1 sentence).
 - image_prompt:
-  - Image 1: "Generate 4k Cinematic style image (1:1) with warm ivory background, " + event_name + ", " + god_name + ", " + god_significance + ", any on-image text in a respectful Kannada-English (Kanglish) mix, Latin script only".
-  - Image 2: "Generate 4k Vedic style image (1:1) with warm ivory background, " + event_name + ", " + day + " " + date + ", " + timings + ", " + key_rituals + ", any on-image text in a respectful Kannada-English (Kanglish) mix, Latin script only".
-- caption: two parts — (1) respectful devotional caption (1–2 sentences), real event name, light emojis (om/lotus/diya); (2) then, on a new line, a 2-line summary of the event's significance and timings. End with EXACTLY 4 hashtags (#SanatanDharma + 3 event-specific) on the final line.
+  - Image 1: "Generate 4k Cinematic style image (1:1) with warm ivory background, Text Language Kannada + English (Mix), " + event_name + ", " + god_name + ", " + god_significance
+  - Image 2: "Generate 4k Vedic style image (1:1) with warm ivory background, Text Language Kannada + English (Mix), " + event_name + ", " + day + " " + date + ", " + timings + ", " + key_rituals
+- caption: respectful devotional caption (1–2 sentences), real event name, light emojis (om/lotus/diya) — this field ONLY, no hashtags inside it.
+- summary_3line: the event's significance and timings in EXACTLY 3 short lines, separated by \\n — factual, no hashtags.
+- hashtags: array of EXACTLY 4 strings, each starting with "#" (#SanatanDharma + 3 event-specific). Do NOT put hashtags inside "caption" or "summary_3line".
 - best_posting_time: single IST suggestion (e.g. "7:30 PM IST").
 
 JSON rule: escape any " inside a string value with \\".
 Return ONLY a JSON array of 2 objects (Image 1 = Cinematic, Image 2 = Vedic), keys:
-"event_name","day","date","significance","timings","key_rituals","god_name","god_significance","image_prompt","caption","best_posting_time".`;
+"event_name","day","date","significance","timings","key_rituals","god_name","god_significance","image_prompt","caption","summary_3line","hashtags","best_posting_time".`;
 }
 
 /* ============================================================
@@ -1558,29 +1579,30 @@ function extractArray(text){
    RUN FLOW
    ============================================================ */
 const KIND_META = {
-  press:  { runBtn:"runMemes",  icon:"🗞️", genPrompt:pressGenPrompt,  promptKey:"image_prompt", emptyIcon:"🗞️", maxItems:6,
-            emptyMsg:"No memes yet. Run the crew to pull live Karnataka headlines and craft 8 meme prompts — Political, Controversy, Breaking News & Kannada Film — + captions." },
+  press:  { runBtn:"runMemes",  icon:"🗞️", promptKey:"image_prompt", emptyIcon:"🗞️", maxItems:6,
+            emptyMsg:"No memes yet. Run the crew to pull live Karnataka headlines and craft 6 meme prompts — Controversy, Breaking News & Kannada Film — + trend-aware captions." },
   divine: { runBtn:"runImage",  icon:"🕉️", genPrompt:imageGenPrompt,  promptKey:"image_prompt",  emptyIcon:"🕉️", maxItems:2,
             emptyMsg:"No prompts yet. Run the Vedic Image Agent for 2 image prompts: Vedic style + Cinematic style." },
   video:  { runBtn:"runVideo",  icon:"🎞️", genPrompt:videoGenPrompt,  promptKey:"video_prompt",  emptyIcon:"🎞️", maxItems:2,
             emptyMsg:"No prompts yet. Run the Vedic Video Agent for 2 video prompts: Vedic style + Cinematic style." }
 };
 
-// Sub-group definitions for the Press lane — order = display order
+// Sub-group definitions for the Press lane — order = display order. Political removed (v9).
 const PRESS_SUBGROUP_META = [
-  { category:"Political",    icon:"🗞", label:"Political"     },
   { category:"Controversy",  icon:"🔥", label:"Controversy"   },
   { category:"Breaking News",icon:"📰", label:"Breaking News" },
   { category:"Kannada Film", icon:"🎬", label:"Kannada Film"  },
   { category:"Other",        icon:"📌", label:"Other"         },
 ];
+// Categories produced by Call A (Breaking+Controversy, merged) — used to render
+// the skipped-notice and drive the retry button when Call A fails entirely.
+const CALL_A_CATEGORIES = ["Breaking News","Controversy"];
 
-// Model category strings drift ("Politics", "Film", "Breaking"…) — normalise so
+// Model category strings drift ("Breaking", "Film"…) — normalise so
 // cards never vanish silently; anything unrecognised lands in "Other".
 function normalizeCategory(cat){
   const c = String(cat||"").toLowerCase();
   if(c.includes("controv")) return "Controversy";
-  if(c.includes("polit"))   return "Political";
   if(c.includes("break"))   return "Breaking News";
   if(c.includes("film")||c.includes("kannada")||c.includes("cinema")||c.includes("sandalwood")) return "Kannada Film";
   return "Other";
@@ -1588,91 +1610,83 @@ function normalizeCategory(cat){
 
 function toggleSubgroup(sg){ sg.classList.toggle("sg-collapsed"); }
 
-function renderPressSubGroups(standardItems, controversyItems, controversyLoading){
+// items: flat array of press cards already known (from either call).
+// opts.loadingCategories: Set of category names still pending (shows skeletons).
+// opts.callAFailed: true → shows a single skipped-notice + retry for Call A
+//                   (Breaking News + Controversy) instead of those two sub-groups.
+function renderPressSubGroups(items, opts={}){
+  const loadingCategories = opts.loadingCategories || new Set();
+  const callAFailed = !!opts.callAFailed;
   const el = laneEl("press");
   el.innerHTML = "";
+
+  if(callAFailed){
+    const d=document.createElement("div"); d.className="empty-state sg-notice";
+    const big=document.createElement("div"); big.className="big"; big.textContent="🔥";
+    const p=document.createElement("p"); p.textContent="Breaking News & Controversy skipped — Gemini blocked or failed this call.";
+    const rb=document.createElement("button"); rb.className="btn btn-ghost retry-controversy"; rb.id="retryCallABtn";
+    rb.innerHTML='<span class="bi">↻</span><span class="bt">Retry Breaking &amp; Controversy</span>';
+    rb.addEventListener("click", retryCallA);
+    d.append(big,p,rb);
+    el.appendChild(d);
+  }
+
   const byCategory = {};
-  standardItems.forEach(it=>{
+  items.forEach(it=>{
     const cat = normalizeCategory(it.category);
     if(!byCategory[cat]) byCategory[cat]=[];
     byCategory[cat].push(it);
   });
-  controversyItems.forEach(it=>{
-    if(!byCategory["Controversy"]) byCategory["Controversy"]=[];
-    byCategory["Controversy"].push(it);
-  });
   let gIdx = 0;
   PRESS_SUBGROUP_META.forEach(({category,icon,label})=>{
-    const items = byCategory[category]||[];
-    const isC = (category==="Controversy");
-    const show = items.length>0 || (isC && controversyLoading);
+    if(callAFailed && CALL_A_CATEGORIES.includes(category)) return; // notice already shown above
+    const catItems = byCategory[category]||[];
+    const isLoading = loadingCategories.has(category);
+    const show = catItems.length>0 || isLoading;
     if(!show) return;
     const sg=document.createElement("div"); sg.className="subgroup";
     const row=document.createElement("div"); row.className="subgroup-row";
-    const disp = (controversyLoading&&isC) ? "…" : items.length;
-    row.innerHTML=`<span class="sg-icon">${icon}</span><span class="sg-label">${label}</span><span class="sg-count"><b>${disp}</b> card${items.length!==1?"s":""}</span><span class="sg-chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" width="14" height="14"><path d="m6 9 6 6 6-6"/></svg></span>`;
+    const disp = isLoading ? "…" : catItems.length;
+    row.innerHTML=`<span class="sg-icon">${icon}</span><span class="sg-label">${label}</span><span class="sg-count"><b>${disp}</b> card${catItems.length!==1?"s":""}</span><span class="sg-chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" width="14" height="14"><path d="m6 9 6 6 6-6"/></svg></span>`;
     row.addEventListener("click",()=>toggleSubgroup(sg));
     sg.appendChild(row);
     const cardsEl=document.createElement("div"); cardsEl.className="sg-cards";
     cardsEl.id="sg-cards-"+category.replace(/\s+/g,"-").toLowerCase();
-    if(controversyLoading&&isC){
+    if(isLoading && catItems.length===0){
       for(let i=0;i<2;i++){const s=document.createElement("div");s.className="skel";cardsEl.appendChild(s);}
     } else {
-      items.forEach(it=>{cardsEl.appendChild(buildCard("press",it,gIdx));gIdx++;});
+      catItems.forEach(it=>{cardsEl.appendChild(buildCard("press",it,gIdx));gIdx++;});
     }
     sg.appendChild(cardsEl); el.appendChild(sg);
   });
-  setCount("press", standardItems.length+controversyItems.length);
+  setCount("press", items.length);
 }
 
-function updateControversySubGroup(items){
-  const cardsEl=document.getElementById("sg-cards-controversy");
-  if(!cardsEl) return;
-  cardsEl.innerHTML="";
-  const countEl2=cardsEl.closest(".subgroup")?.querySelector(".sg-count");
-  if(countEl2) countEl2.innerHTML=`<b>${items.length}</b> card${items.length!==1?"s":""}`;
-  if(items.length===0){
-    // Visible skipped-state instead of a bare 0-count header — with a retry that
-    // re-runs ONLY the controversy call (Call 1's results & quota untouched).
-    const d=document.createElement("div"); d.className="empty-state sg-notice";
-    const big=document.createElement("div"); big.className="big"; big.textContent="🔥";
-    const p=document.createElement("p"); p.textContent="Controversy skipped — Gemini blocked or failed this call.";
-    const rb=document.createElement("button"); rb.className="btn btn-ghost retry-controversy"; rb.id="retryControversyBtn";
-    rb.innerHTML='<span class="bi">↻</span><span class="bt">Retry Controversy</span>';
-    rb.addEventListener("click", retryControversy);
-    d.append(big,p,rb);
-    cardsEl.appendChild(d);
-    return;
-  }
-  const base = data["press"].filter(it=>normalizeCategory(it.category)!=="Controversy").length;
-  items.forEach((it,i)=>cardsEl.appendChild(buildCard("press",it,base+i)));
-}
-
-async function retryControversy(){
+async function retryCallA(){
   if(!preflight()) return;
   if(busyFlag("press")) return;
   setBusy("press", true);
   const ctrl=new AbortController(); abortCtrl["press"]=ctrl;
-  const cardsEl=document.getElementById("sg-cards-controversy");
-  if(cardsEl){ cardsEl.innerHTML=""; for(let i=0;i<2;i++){const s=document.createElement("div");s.className="skel";cardsEl.appendChild(s);} }
-  log("Retrying controversy call…","press");
+  const filmItems = data["press"].filter(it=>normalizeCategory(it.category)==="Kannada Film");
+  renderPressSubGroups(filmItems, { loadingCategories:new Set(["Breaking News","Controversy"]) });
+  log("Retrying Breaking News & Controversy…","press");
   try{
     // Manual retry gets the full retry ladder — the user explicitly asked for it
-    const standard=data["press"].filter(it=>normalizeCategory(it.category)!=="Controversy");
-    const exclude=standard.map(it=>it.headline).filter(Boolean);
-    const genText=await callGemini(controversyGenPrompt(exclude),true,null,ctrl.signal,"press");
-    let items=extractArray(genText).slice(0,2);
-    const dd=dedupeControversy(standard,items);
-    if(dd.dropped.length){ log(`Dedup — dropped ${dd.dropped.length} duplicate controversy card(s).`,"warn"); items=dd.kept; }
-    data["press"]=[...standard,...items];
-    updateControversySubGroup(items);
-    setCount("press",data["press"].length);
-    log(`Controversy retry — ${items.length} prompt(s) drafted.`,"ok");
+    const genText=await callGemini(breakingControversyGenPrompt(true),true,null,ctrl.signal,"pressA");
+    let items=extractArray(genText).slice(0,4);
+    const dd=dedupeAcrossCalls(items,filmItems);
+    let film=filmItems;
+    if(dd.dropped.length){ log(`Dedup — dropped ${dd.dropped.length} Kannada Film card(s) duplicating retried stories.`,"warn"); film=dd.kept; }
+    data["press"]=[...items,...film];
+    renderPressSubGroups(data["press"], {});
+    log(`Retry — ${items.length} prompt(s) drafted.`,"ok");
     runViralityAgent();
   }catch(err){
-    if(err.name==="AbortError"){ log("Retry stopped by user.","sys"); }
-    else{ log(`Controversy retry failed: ${err.message}`,"err"); toast(err.message||"Retry failed","err"); }
-    updateControversySubGroup([]);
+    if(err.name==="AbortError"){ log("Retry stopped by user.","sys"); renderPressSubGroups(filmItems, {}); }
+    else{
+      log(`Retry failed: ${err.message}`,"err"); toast(err.message||"Retry failed","err");
+      renderPressSubGroups(filmItems, { callAFailed:true });
+    }
   }finally{
     abortCtrl["press"]=null;
     setBusy("press",false);
@@ -1790,80 +1804,97 @@ function spinOff(id, icon){
   const sp=btn.querySelector(".spin"); if(sp) sp.outerHTML = `<span class="bi">${icon}</span>`;
 }
 
-async function runMemesCrewDual(){
+async function runMemesCrew(){
   if(!preflight()) return;
   if(busyFlag("press")) return;
   setBusy("press", true);
   spinOn("runMemes");
-  const el=laneEl("press"); el.innerHTML="";
-  for(let i=0;i<6;i++){const s=document.createElement("div");s.className="skel";el.appendChild(s);}
-  setCount("press",0);
   if(viralityCtrl){ viralityCtrl.abort(); viralityCtrl=null; }
   const ctrl=new AbortController(); abortCtrl["press"]=ctrl;
-  let phase1Items=[];
-  try{
-    const grounded=!!cfg.useSearch;
-    log(`Launching both calls in parallel — standard news + controversy…`,"press");
-    // Independent calls — run them concurrently (halves wall time, safety isolation kept).
-    const p1 = callGemini(pressGenPrompt(),grounded,null,ctrl.signal,"press")
-                 .then(t=>extractArray(t).slice(0,6));
-    // Controversy: failFast — its common failure is a block, not a blip; don't sit
-    // through the full retry ladder. Wrapped so a rejection never goes unhandled
-    // while we're still awaiting p1.
-    const p2 = callGemini(controversyGenPrompt(),true,null,ctrl.signal,"press",{failFast:true})
-                 .then(t=>({ok:true, items:extractArray(t).slice(0,2)}))
-                 .catch(err=>({ok:false, err}));
-    phase1Items = await p1;
-    log(`Call 1/2 — ${phase1Items.length} standard prompt(s) drafted.`,"ok");
-    data["press"]=[...phase1Items];
-    renderPressSubGroups(phase1Items,[],true);
-    setCount("press",phase1Items.length);
-    const r2 = await p2;
-    if(ctrl.signal.aborted) throw new DOMException("Aborted","AbortError");
-    let controversyItems=[];
-    if(r2.ok){
-      controversyItems=r2.items;
-      log(`Call 2/2 — ${controversyItems.length} controversy prompt(s) drafted.`,"ok");
-      // Uniqueness gate — if a controversy card duplicates a Call 1 story,
-      // auto-retry ONCE with an exclusion list of Call 1 headlines.
-      const d1 = dedupeControversy(phase1Items, controversyItems);
-      if(d1.dropped.length){
-        log(`Dedup — ${d1.dropped.length} controversy card(s) duplicated Call 1 stories; auto-retrying with exclusion list…`,"warn");
-        try{
-          const exclude = phase1Items.map(it=>it.headline).filter(Boolean);
-          const t2 = await callGemini(controversyGenPrompt(exclude), true, null, ctrl.signal, "press", {failFast:true});
-          const retryItems = extractArray(t2).slice(0,2);
-          const d2 = dedupeControversy(phase1Items, retryItems);
-          controversyItems = d2.kept.length ? d2.kept.slice(0,2) : d1.kept;
-          log(`Dedup retry — ${controversyItems.length} unique controversy card(s).`, controversyItems.length ? "ok" : "warn");
-        }catch(retryErr){
-          if(retryErr.name==="AbortError") throw retryErr;
-          controversyItems = d1.kept;
-          log(`Dedup retry failed (${retryErr.message}) — keeping ${d1.kept.length} unique card(s).`,"warn");
-        }
-      }
-    } else {
-      if(r2.err?.name==="AbortError") throw r2.err;
-      log(`Call 2/2 — skipped: ${r2.err?.message||"blocked"}`,"warn");
-      toast("Controversy skipped — use ↻ Retry in the Controversy group","err");
+  const grounded=!!cfg.useSearch;
+
+  // v9: 2 calls, 6 cards total, no Political. Call A = Breaking News + Controversy
+  // (merged — direct/raw wording, no softened language). Call B = Kannada Film.
+  // Both render progressively into their sub-groups the moment each settles.
+  const state = { aItems:[], aDone:false, aFailed:false, bItems:[], bDone:false };
+
+  function loadingSet(){
+    const s = new Set();
+    if(!state.aDone){ s.add("Breaking News"); s.add("Controversy"); }
+    if(!state.bDone){ s.add("Kannada Film"); }
+    return s;
+  }
+  function rerender(){
+    const items = [...state.aItems, ...state.bItems];
+    data["press"] = items;
+    renderPressSubGroups(items, { loadingCategories: loadingSet(), callAFailed: state.aFailed && state.aDone });
+  }
+
+  rerender(); // initial: all 3 sub-groups show skeletons
+  log(`Launching both calls in parallel — Breaking News + Controversy, and Kannada Film…`,"press");
+
+  async function runCallA(){
+    try{
+      // Direct/raw wording first (failFast — its common failure is a block, not a blip).
+      const t = await callGemini(breakingControversyGenPrompt(true), grounded, null, ctrl.signal, "pressA", {failFast:true});
+      return extractArray(t).slice(0,4);
+    }catch(err){
+      if(err.name==="AbortError") throw err;
+      log(`Breaking News/Controversy call blocked (${err.message}) — retrying with filter-safe wording…`,"warn");
+      const t2 = await callGemini(breakingControversyGenPrompt(false), grounded, null, ctrl.signal, "pressA", {failFast:true});
+      return extractArray(t2).slice(0,4);
     }
-    data["press"]=[...phase1Items,...controversyItems];
-    updateControversySubGroup(controversyItems);
-    setCount("press",data["press"].length);
-    log(`Prompts ready on screen.`,"ok");
-    runViralityAgent(); // non-blocking 3rd call — badges fill in when it settles
+  }
+
+  function crossDedupe(){
+    if(state.aItems.length && state.bItems.length){
+      const dd = dedupeAcrossCalls(state.aItems, state.bItems);
+      if(dd.dropped.length){
+        log(`Dedup — dropped ${dd.dropped.length} Kannada Film card(s) duplicating Breaking/Controversy stories.`,"warn");
+        state.bItems = dd.kept;
+      }
+    }
+  }
+
+  const pA = runCallA().then(items=>{
+    if(ctrl.signal.aborted) return;
+    state.aItems = items; state.aDone = true;
+    log(`Breaking News & Controversy — ${items.length} prompt(s) drafted.`,"ok");
+    crossDedupe(); rerender();
+  }).catch(err=>{
+    if(err.name==="AbortError") throw err;
+    state.aDone = true; state.aFailed = true;
+    log(`Breaking News & Controversy — skipped: ${err.message||"blocked"}`,"warn");
+    toast("Breaking/Controversy skipped — use ↻ Retry","err");
+    rerender();
+  });
+
+  const pB = callGemini(kannadaFilmGenPrompt(), grounded, null, ctrl.signal, "pressB")
+    .then(t=>extractArray(t).slice(0,2))
+    .then(items=>{
+      if(ctrl.signal.aborted) return;
+      state.bItems = items; state.bDone = true;
+      log(`Kannada Film — ${items.length} prompt(s) drafted.`,"ok");
+      crossDedupe(); rerender();
+    }).catch(err=>{
+      if(err.name==="AbortError") throw err;
+      state.bDone = true;
+      log(`Kannada Film — skipped: ${err.message||"failed"}`,"warn");
+      rerender();
+    });
+
+  try{
+    await Promise.all([pA, pB]);
+    if(state.aItems.length || state.bItems.length){
+      log(`Prompts ready on screen.`,"ok");
+      runViralityAgent(); // non-blocking 3rd call — badges fill in when it settles
+    }
   }catch(err){
     if(err.name==="AbortError"){
       log("Run stopped by user.","sys");
-      if(phase1Items.length>0){
-        data["press"]=[...phase1Items];
-        renderPressSubGroups(phase1Items,[],false);
-        setCount("press",phase1Items.length);
-        log("Showing Call 1 results.","sys");
-      } else { resetLane("press"); }
+      if(!state.aItems.length && !state.bItems.length) resetLane("press");
     } else {
       log(err.message||String(err),"err");
-      renderError("press",err.message||String(err));
       toast(err.message||"Something went wrong","err");
     }
   }finally{
@@ -1874,7 +1905,7 @@ async function runMemesCrewDual(){
 }
 
 async function runCrew(kind){
-  if(kind==="press"){ return runMemesCrewDual(); }
+  if(kind==="press"){ return runMemesCrew(); }
   if(!preflight()) return;
   if(busyFlag(kind)) return;
   setBusy(kind, true);
@@ -1991,7 +2022,15 @@ function buildCard(kind, it, i){
   const hideCaption = (kind==="divine" && i===1);
   if(!hideCaption){
     const capPill = (kind==="press"||kind==="divine") ? "summary + 4 tags" : "4 hashtags";
-    body.appendChild(fieldBlock("Caption", capPill, it.caption, "caption-box"));
+    // Memes + Vedic Image: caption is assembled client-side from split JSON fields
+    // (tagline/caption + summary_3line + hashtags[4]) so hashtags can never land
+    // mid-caption. Vedic Video keeps its original single "caption" string.
+    const captionText = kind==="press"
+      ? assembleCaption(it.tagline, it.summary_3line, it.hashtags)
+      : kind==="divine"
+        ? assembleCaption(it.caption, it.summary_3line, it.hashtags)
+        : (it.caption||"");
+    body.appendChild(fieldBlock("Caption", capPill, captionText, "caption-box"));
   }
 
   if(kind==="press"){
