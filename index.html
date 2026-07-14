@@ -267,6 +267,23 @@
   .subgroup.sg-collapsed .sg-chev{transform:rotate(-90deg)}
   .sg-cards{display:flex;flex-direction:column;gap:14px;padding:12px 0 4px}
   .subgroup.sg-collapsed .sg-cards{display:none}
+  /* ---- virality agent ---- */
+  .viral-wrap{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .viral-pill{font-family:"IBM Plex Mono";font-size:11px;letter-spacing:.02em;border:1px solid var(--line);background:var(--field);border-radius:999px;padding:4px 10px;width:max-content;max-width:100%}
+  .viral-wait{color:var(--muted);animation:viralpulse 1.4s ease infinite}
+  .viral-high{color:#16a34a;border-color:#16a34a55}
+  .viral-med{color:#d97706;border-color:#d9770655}
+  .viral-low{color:#64748b}
+  .viral-retry{cursor:pointer}
+  .ht-strip{display:flex;flex-wrap:wrap;gap:6px}
+  .ht-chip{font-family:"IBM Plex Mono";font-size:10px;border:1px solid var(--line);background:var(--field);border-radius:8px;padding:3px 8px;display:inline-flex;gap:6px;align-items:center;color:var(--muted)}
+  .ht-chip b{font-weight:600;color:inherit}
+  .ht-chip.viral-high{color:#16a34a}
+  .ht-chip.viral-med{color:#d97706}
+  .ht-chip a{color:var(--muted);text-decoration:none;border-bottom:1px dotted var(--line)}
+  .ht-chip a:hover{color:inherit}
+  .ht-risky{border-color:#dc262666;color:#dc2626}
+  @keyframes viralpulse{0%,100%{opacity:.55}50%{opacity:1}}
   .sg-notice{padding:22px 16px}
   .sg-notice .retry-controversy{margin:12px auto 0;height:40px;padding:0 16px;font-size:13px}
 
@@ -1136,7 +1153,7 @@ const BACKOFFS = [6000, 15000, 30000];
 const FALLBACK_CHAIN = ["gemini-2.5-flash-lite", "gemini-3.1-flash-lite"];
 
 // Right-sized output token budgets per engine — avoids padding toward 8k
-const MAX_TOKENS = { press:3500, divine:2500, video:2500 };
+const MAX_TOKENS = { press:3500, divine:2500, video:2500, virality:2600 };
 
 async function callGemini(prompt, useSearch, modelOverride, signal, kind, opts={}){
   // Auto-route to Flash-Lite when search is off: 2× free RPM, fastest for pure JSON
@@ -1300,6 +1317,8 @@ Produce EXACTLY 2 meme concepts per category (6 total). For each pick:
 - The comedic angle: irony, contrast, overpromising, or surprise.
 - A short on-image punchline (voice of public/top comments) + a witty caption.
 
+UNIQUENESS RULE: all 6 concepts MUST cover 6 DIFFERENT news stories — never reuse the same story, person-moment, or event across categories. If a story fits two categories, use it in ONE only and pick a different story for the other.
+
 Virality: 3-second clarity, minimal text, strong exaggeration + irony, relatable to local sentiment.
 
 OUTPUT FIELDS:
@@ -1308,21 +1327,25 @@ OUTPUT FIELDS:
 - "summary": 1–2 sentence neutral recap so anyone gets the context.
 - "punchline": 3–8 word on-image tagline, or "" if none needed.
 - "image_prompt":
-  - Political: "Generate an 4K, Meme Style Image, 1:1 ratio, " + punchline + ", " + summary.
-  - Breaking News / Kannada Film: "Generate 4k Memes style Image (1:1 ratio), " + punchline + ", " + summary.
-- "caption": self-contained witty caption naming the real event/person. Light emojis. End with EXACTLY 4 hashtags.
+  - Political: "Generate an 4K, Meme Style Image, 1:1 ratio, " + punchline + ", " + summary + ", on-image text in a natural Kannada-English (Kanglish) mix, Latin script only".
+  - Breaking News / Kannada Film: "Generate 4k Memes style Image (1:1 ratio), " + punchline + ", " + summary + ", on-image text in a natural Kannada-English (Kanglish) mix, Latin script only".
+- "caption": two parts — (1) self-contained witty caption naming the real event/person, light emojis; (2) then, on a new line, a neutral 2-line summary of the news so anyone gets the full context. End with EXACTLY 4 hashtags on the final line.
 
 JSON rule: escape any double-quote inside a string value with \\".
 Return ONLY a raw JSON array of 6 objects (2 Political, 2 Breaking News, 2 Kannada Film), keys:
 "category","headline","summary","image_prompt","punchline","caption".`;}
 
-function controversyGenPrompt(){
+function controversyGenPrompt(excludeHeadlines){
   const today = new Date().toLocaleDateString("en-IN",{weekday:"long",year:"numeric",month:"long",day:"numeric",timeZone:"Asia/Kolkata"});
+  const excl = (excludeHeadlines&&excludeHeadlines.length)
+    ? `\nALREADY COVERED — do NOT build on any of these stories, pick DIFFERENT controversies:\n${excludeHeadlines.map(h=>"- "+h).join("\n")}\n`
+    : "";
   return `${esc(cfg.region)} political satire meme generator. Today: ${today} IST.
+${excl}
 
 Search Google for the most talked-about ${esc(cfg.region)} controversies in the LAST ${cfg.window} HOURS — political scandals, corruption allegations, leader gaffes and U-turns, nepotism debates, heated political exchanges, and moments of strong public criticism.
 
-Produce EXACTLY 2 satirical meme concepts. For each pick the single most-discussed moment and apply:
+Produce EXACTLY 2 satirical meme concepts covering 2 DIFFERENT controversies. For each pick the single most-discussed moment and apply:
 - Sharp, pointed political satire in the voice of frustrated public commentary and top social-media comments.
 - Punchline: witty and biting, 3–8 words.
 - Caption: pointed satirical caption naming the real people and events involved.
@@ -1332,12 +1355,60 @@ OUTPUT FIELDS:
 - "headline": the real headline, concise and specific.
 - "summary": 1–2 sentence factual recap of the controversy, naming people involved.
 - "punchline": 3–8 word on-image tagline, sharp and witty, or "" if the image speaks for itself.
-- "image_prompt": "Generate an 4K, Meme Style Image, 1:1 ratio, " + punchline + ", " + summary.
-- "caption": self-contained satirical caption naming real people/events. Light emojis OK. End with EXACTLY 4 hashtags.
+- "image_prompt": "Generate an 4K, Meme Style Image, 1:1 ratio, " + punchline + ", " + summary + ", on-image text in a natural Kannada-English (Kanglish) mix, Latin script only".
+- "caption": two parts — (1) self-contained satirical caption naming real people/events, light emojis OK; (2) then, on a new line, a neutral 2-line summary of the controversy. End with EXACTLY 4 hashtags on the final line.
 
 JSON rule: escape any double-quote inside a string value with \\".
 Return ONLY a raw JSON array of 2 objects, keys:
 "category","headline","summary","image_prompt","punchline","caption".`;}
+
+/* ============================================================
+   DUPLICATE-NEWS DETECTION (Call 1 vs Controversy)
+   ============================================================ */
+function normWords(str){
+  return String(str||"").toLowerCase().replace(/[^a-z0-9 ]+/g," ").split(/\s+/).filter(w=>w.length>3);
+}
+function storiesSimilar(a,b){
+  const A=new Set(normWords(a)), B=new Set(normWords(b));
+  if(!A.size||!B.size) return false;
+  let inter=0; A.forEach(w=>{ if(B.has(w)) inter++; });
+  return inter/Math.min(A.size,B.size) >= 0.6;
+}
+function dedupeControversy(standard, controversy){
+  const kept=[], dropped=[];
+  controversy.forEach(c=>{
+    const dupe = standard.some(st=>
+      storiesSimilar(st.headline,c.headline) || storiesSimilar(st.summary,c.summary));
+    (dupe?dropped:kept).push(c);
+  });
+  return {kept, dropped};
+}
+
+/* ============================================================
+   PROMPT BUILDER — VIRALITY AGENT (MEMES, 3rd call)
+   ============================================================ */
+function extractHashtags(caption){
+  return (String(caption||"").match(/#[A-Za-z0-9_]+/g)||[]).slice(0,6);
+}
+function viralityGenPrompt(items){
+  const today = new Date().toLocaleDateString("en-IN",{weekday:"long",year:"numeric",month:"long",day:"numeric",timeZone:"Asia/Kolkata"});
+  const list = items.map((it,i)=>`${i+1}. story: ${it.headline||""} | hashtags: ${extractHashtags(it.caption).join(" ")||"(none)"}`).join("\n");
+  return `Social media virality analyst for ${esc(cfg.region)} Instagram/Facebook meme content. Today: ${today} IST.
+
+Use Google Search to judge, for each numbered item below, how strongly its news story is trending RIGHT NOW (social chatter, news coverage volume, search interest) and how accurate and viral each hashtag currently is on Instagram and Facebook.
+
+ITEMS:
+${list}
+
+For every item return:
+- "index": the item number above.
+- "viral_score": integer 0-100 — how viral/trending the story is right now.
+- "viral_band": "High" (70-100), "Medium" (40-69) or "Low" (0-39) — must match viral_score.
+- "hashtags": array with one object per hashtag, SAME order as given: {"tag":"#…","score":0-100,"band":"High|Medium|Low","status":"Live|Inactive|Risky"} — status: "Live" = active, commonly used tag on Instagram/Facebook; "Inactive" = unused/dead; "Risky" = likely banned or restricted.
+Scores are your best estimate from live search evidence — be decisive. No explanations.
+JSON rule: escape any " inside a string value with \\".
+Return ONLY a raw JSON array of ${items.length} objects, keys: "index","viral_score","viral_band","hashtags".`;
+}
 
 /* ============================================================
    PROMPT BUILDERS — VEDIC ENGINE (IMAGE AGENT)
@@ -1346,9 +1417,11 @@ const KARNATAKA_CALENDAR_NOTE = `Karnataka/South India uses the Amanta lunar sys
 
 function eventSelectionBlock(lookaheadHours){
   const hrs = lookaheadHours || 72;
-  return `EVENT SELECTION — use Google Search, ground every fact in real tradition, never invent:
-OPTION 1: Search for significant Hindu calendar events (Amavasya, Ekadashi, Purnima, Sankashti, named festivals) in the next ${hrs} hours IST. Pick the top 1.
-OPTION 2 (only if Option 1 yields nothing significant): Search what is Vedically special TODAY and build around today's tithi/nakshatra/vrat — phrase event_name naturally for whatever you find.
+  const now = new Date().toLocaleString("en-IN",{weekday:"long",year:"numeric",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Kolkata"});
+  return `TODAY IS ${now} IST — anchor every date calculation to this exact date and time.
+EVENT SELECTION — use Google Search, ground every fact in real tradition, never invent:
+OPTION 1: Search for significant Hindu calendar events (Amavasya, Ekadashi, Purnima, Sankashti, named festivals) falling within the next ${hrs} hours FROM TODAY. Pick the top 1. The event date MUST be today or later — NEVER a past date; ignore any search result describing a previous year's or an already-passed occurrence.
+OPTION 2 (only if Option 1 yields nothing significant): Search what is Vedically special TODAY (${now} IST) and build around today's tithi/nakshatra/vrat — phrase event_name naturally for whatever you find. Verify the tithi/nakshatra applies to TODAY's actual date, not an older cached page.
 ${KARNATAKA_CALENDAR_NOTE}`;
 }
 
@@ -1366,9 +1439,9 @@ Produce EXACTLY 2 image concepts for the SAME event:
 FIELDS (both images share the same event):
 - event_name, day, date, significance (1–2 factual sentences), timings (short IST phrase), key_rituals (2–3 items, comma-separated), god_name (deity or devotional focus), god_significance (1 sentence).
 - image_prompt:
-  - Image 1: "Generate 4k Cinematic style image (1:1) with warm ivory background, " + event_name + ", " + god_name + ", " + god_significance.
-  - Image 2: "Generate 4k Vedic style image (1:1) with warm ivory background, " + event_name + ", " + day + " " + date + ", " + timings + ", " + key_rituals.
-- caption: respectful devotional caption (1–2 sentences), real event name, light emojis (om/lotus/diya), EXACTLY 4 hashtags (#SanatanDharma + 3 event-specific).
+  - Image 1: "Generate 4k Cinematic style image (1:1) with warm ivory background, " + event_name + ", " + god_name + ", " + god_significance + ", any on-image text in a respectful Kannada-English (Kanglish) mix, Latin script only".
+  - Image 2: "Generate 4k Vedic style image (1:1) with warm ivory background, " + event_name + ", " + day + " " + date + ", " + timings + ", " + key_rituals + ", any on-image text in a respectful Kannada-English (Kanglish) mix, Latin script only".
+- caption: two parts — (1) respectful devotional caption (1–2 sentences), real event name, light emojis (om/lotus/diya); (2) then, on a new line, a 2-line summary of the event's significance and timings. End with EXACTLY 4 hashtags (#SanatanDharma + 3 event-specific) on the final line.
 - best_posting_time: single IST suggestion (e.g. "7:30 PM IST").
 
 JSON rule: escape any " inside a string value with \\".
@@ -1585,13 +1658,17 @@ async function retryControversy(){
   log("Retrying controversy call…","press");
   try{
     // Manual retry gets the full retry ladder — the user explicitly asked for it
-    const genText=await callGemini(controversyGenPrompt(),true,null,ctrl.signal,"press");
-    const items=extractArray(genText).slice(0,2);
     const standard=data["press"].filter(it=>normalizeCategory(it.category)!=="Controversy");
+    const exclude=standard.map(it=>it.headline).filter(Boolean);
+    const genText=await callGemini(controversyGenPrompt(exclude),true,null,ctrl.signal,"press");
+    let items=extractArray(genText).slice(0,2);
+    const dd=dedupeControversy(standard,items);
+    if(dd.dropped.length){ log(`Dedup — dropped ${dd.dropped.length} duplicate controversy card(s).`,"warn"); items=dd.kept; }
     data["press"]=[...standard,...items];
     updateControversySubGroup(items);
     setCount("press",data["press"].length);
     log(`Controversy retry — ${items.length} prompt(s) drafted.`,"ok");
+    runViralityAgent();
   }catch(err){
     if(err.name==="AbortError"){ log("Retry stopped by user.","sys"); }
     else{ log(`Controversy retry failed: ${err.message}`,"err"); toast(err.message||"Retry failed","err"); }
@@ -1600,6 +1677,90 @@ async function retryControversy(){
     abortCtrl["press"]=null;
     setBusy("press",false);
   }
+}
+
+/* ============================================================
+   VIRALITY AGENT — non-blocking, runs after Memes cards render.
+   Scores are Gemini estimates from live search — NOT official
+   Instagram/Facebook metrics (no free API exposes those).
+   ============================================================ */
+let viralityCtrl = null;
+
+function pressCards(){ return [...document.querySelectorAll("#cardsPress .card")]; }
+function cardForItem(it){
+  const key=String(it.headline||"").slice(0,80);
+  return pressCards().find(c=>c.dataset.h===key)||null;
+}
+function setViralityState(html){
+  pressCards().forEach(c=>{ const w=c.querySelector(".viral-wrap"); if(w) w.innerHTML=html; });
+}
+function bandClass(band){ const b=String(band||"").toLowerCase(); return b.startsWith("h")?"viral-high":b.startsWith("m")?"viral-med":"viral-low"; }
+function bandIcon(band){ const b=String(band||"").toLowerCase(); return b.startsWith("h")?"🔥":b.startsWith("m")?"📈":"🧊"; }
+function normBand(band,score){
+  const b=String(band||"").toLowerCase();
+  if(b.startsWith("h")) return "High";
+  if(b.startsWith("m")) return "Medium";
+  if(b.startsWith("l")) return "Low";
+  const sc=Number(score)||0; return sc>=70?"High":sc>=40?"Medium":"Low";
+}
+
+async function runViralityAgent(){
+  const items=(data["press"]||[]).filter(it=>it&&it.headline);
+  if(!items.length) return;
+  if(viralityCtrl) viralityCtrl.abort();
+  const ctrl=new AbortController(); viralityCtrl=ctrl;
+  setViralityState('<span class="viral-pill viral-wait">📈 scoring virality vs live trends…</span>');
+  log("Virality agent — checking stories & hashtags against live social trends…","press");
+  try{
+    const t=await callGemini(viralityGenPrompt(items), true, null, ctrl.signal, "virality", {failFast:true});
+    const results=extractArray(t);
+    applyVirality(items, results);
+    log(`Virality agent — scored ${results.length} card(s) (search-based estimates).`,"ok");
+  }catch(err){
+    if(err.name==="AbortError"){ log("Virality scoring cancelled.","sys"); return; }
+    log(`Virality agent failed: ${err.message}`,"warn");
+    setViralityState('<span class="viral-pill viral-low viral-retry" title="Re-run the virality scoring call">⚠︎ virality score failed — click to retry</span>');
+    pressCards().forEach(c=>{
+      const r=c.querySelector(".viral-retry");
+      if(r) r.addEventListener("click", ()=>runViralityAgent(), {once:true});
+    });
+  }finally{
+    if(viralityCtrl===ctrl) viralityCtrl=null;
+  }
+}
+
+function applyVirality(items, results){
+  (results||[]).forEach(r=>{
+    const it=items[(Number(r.index)||0)-1]; if(!it) return;
+    const card=cardForItem(it); if(!card) return;
+    const wrap=card.querySelector(".viral-wrap"); if(!wrap) return;
+    wrap.innerHTML="";
+    const band=normBand(r.viral_band, r.viral_score);
+    const score=Math.max(0,Math.min(100,Math.round(Number(r.viral_score)||0)));
+    const pill=document.createElement("span");
+    pill.className="viral-pill "+bandClass(band);
+    pill.title="Gemini-estimated trend score from live search — not an official Instagram/Facebook metric";
+    pill.textContent=`${bandIcon(band)} ${band} · ~${score}% viral`;
+    wrap.appendChild(pill);
+    const strip=document.createElement("div"); strip.className="ht-strip";
+    (r.hashtags||[]).forEach(h=>{
+      const clean=(String(h.tag||"").match(/[A-Za-z0-9_]+/g)||[]).join("");
+      if(!clean) return;
+      const raw=String(h.status||"");
+      const st=/risk|bann|restrict/i.test(raw)?"Risky":/inactive|dead|unused/i.test(raw)?"Inactive":"Live";
+      const dot=st==="Risky"?"🔴":st==="Inactive"?"⚪":"🟢";
+      const hb=normBand(h.band,h.score);
+      const hs=Math.max(0,Math.min(100,Math.round(Number(h.score)||0)));
+      const chip=document.createElement("span");
+      chip.className="ht-chip "+bandClass(hb)+(st==="Risky"?" ht-risky":"");
+      chip.title=st==="Risky"
+        ? "Possibly banned/restricted on Instagram or Facebook — verify before posting"
+        : `Estimated hashtag virality · status: ${st} · tap IG/FB to verify live`;
+      chip.innerHTML=`<b>#${clean}</b> ${dot} ${st} · ${hb} ~${hs}% <a href="https://www.instagram.com/explore/tags/${encodeURIComponent(clean)}/" target="_blank" rel="noopener">IG↗</a><a href="https://www.facebook.com/hashtag/${encodeURIComponent(clean)}" target="_blank" rel="noopener">FB↗</a>`;
+      strip.appendChild(chip);
+    });
+    if(strip.children.length) wrap.appendChild(strip);
+  });
 }
 
 function busyFlag(kind, val){
@@ -1637,6 +1798,7 @@ async function runMemesCrewDual(){
   const el=laneEl("press"); el.innerHTML="";
   for(let i=0;i<6;i++){const s=document.createElement("div");s.className="skel";el.appendChild(s);}
   setCount("press",0);
+  if(viralityCtrl){ viralityCtrl.abort(); viralityCtrl=null; }
   const ctrl=new AbortController(); abortCtrl["press"]=ctrl;
   let phase1Items=[];
   try{
@@ -1662,6 +1824,24 @@ async function runMemesCrewDual(){
     if(r2.ok){
       controversyItems=r2.items;
       log(`Call 2/2 — ${controversyItems.length} controversy prompt(s) drafted.`,"ok");
+      // Uniqueness gate — if a controversy card duplicates a Call 1 story,
+      // auto-retry ONCE with an exclusion list of Call 1 headlines.
+      const d1 = dedupeControversy(phase1Items, controversyItems);
+      if(d1.dropped.length){
+        log(`Dedup — ${d1.dropped.length} controversy card(s) duplicated Call 1 stories; auto-retrying with exclusion list…`,"warn");
+        try{
+          const exclude = phase1Items.map(it=>it.headline).filter(Boolean);
+          const t2 = await callGemini(controversyGenPrompt(exclude), true, null, ctrl.signal, "press", {failFast:true});
+          const retryItems = extractArray(t2).slice(0,2);
+          const d2 = dedupeControversy(phase1Items, retryItems);
+          controversyItems = d2.kept.length ? d2.kept.slice(0,2) : d1.kept;
+          log(`Dedup retry — ${controversyItems.length} unique controversy card(s).`, controversyItems.length ? "ok" : "warn");
+        }catch(retryErr){
+          if(retryErr.name==="AbortError") throw retryErr;
+          controversyItems = d1.kept;
+          log(`Dedup retry failed (${retryErr.message}) — keeping ${d1.kept.length} unique card(s).`,"warn");
+        }
+      }
     } else {
       if(r2.err?.name==="AbortError") throw r2.err;
       log(`Call 2/2 — skipped: ${r2.err?.message||"blocked"}`,"warn");
@@ -1671,6 +1851,7 @@ async function runMemesCrewDual(){
     updateControversySubGroup(controversyItems);
     setCount("press",data["press"].length);
     log(`Prompts ready on screen.`,"ok");
+    runViralityAgent(); // non-blocking 3rd call — badges fill in when it settles
   }catch(err){
     if(err.name==="AbortError"){
       log("Run stopped by user.","sys");
@@ -1806,7 +1987,19 @@ function buildCard(kind, it, i){
   const promptPill = kind==="video" ? "9:16 · 10s" : "1:1";
   body.appendChild(fieldBlock(promptLabel, promptPill, promptText, "prompt-box"));
 
-  body.appendChild(fieldBlock("Caption","4 hashtags", it.caption, "caption-box"));
+  // Vedic Image 2 ("Vedic style") carries no caption on the card by design.
+  const hideCaption = (kind==="divine" && i===1);
+  if(!hideCaption){
+    const capPill = (kind==="press"||kind==="divine") ? "summary + 4 tags" : "4 hashtags";
+    body.appendChild(fieldBlock("Caption", capPill, it.caption, "caption-box"));
+  }
+
+  if(kind==="press"){
+    card.dataset.h = String(it.headline||"").slice(0,80);
+    const vw=document.createElement("div"); vw.className="viral-wrap";
+    vw.innerHTML='<span class="viral-pill viral-wait">📈 virality: pending…</span>';
+    body.appendChild(vw);
+  }
 
   card.appendChild(body);
   return card;
