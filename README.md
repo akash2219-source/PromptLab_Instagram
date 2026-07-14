@@ -13,7 +13,7 @@ PromptLab generates image and video prompts for Instagram content across two tab
 
 | Tab | Purpose |
 |---|---|
-| **Memes** | 8 meme image prompts across 4 categories — live Karnataka news via Gemini Google Search grounding |
+| **Memes** | 6 meme image prompts across 3 categories (Controversy, Breaking News, Kannada Film) — live Karnataka news via Gemini Google Search grounding, with trend-aware captions |
 | **Vedic Engine** | 2 image + 2 video prompts tied to today's top Hindu calendar event |
 
 All outputs are prompts only — users copy them into their image/video generation tool of choice (Midjourney, Kling, etc.). Nothing is generated inside the app.
@@ -110,8 +110,9 @@ const BACKOFFS = [6000, 15000, 30000]; // ms — used for 500/503 + empty-respon
 
 ### Per-Engine Token Budgets
 ```js
-const MAX_TOKENS = { press:3500, divine:2500, video:2500, virality:2600 };
+const MAX_TOKENS = { pressA:3000, pressB:1800, divine:2500, video:2500, virality:2600 };
 ```
+`pressA` = Breaking News + Controversy call (4 cards, bigger prompt). `pressB` = Kannada Film call (2 cards, lighter). Captions were folded into these calls (no separate caption call), which is what keeps the budgets tight despite each card now returning `tagline`/`summary_3line`/`hashtags` on top of the prompt fields.
 
 ### Fallback Chain (rate-limit triggered)
 ```
@@ -132,67 +133,71 @@ When `useSearch=0`, calls auto-route to `gemini-2.5-flash-lite` (30 RPM, fastest
 
 ## 5. Engines
 
-### 5.1 Memes Crew (Press Lane)
+### 5.1 Memes Crew (Press Lane) — v9
 
-**Two PARALLEL API calls per run** (launched concurrently; safety isolation preserved — a Call 2 block never affects Call 1):
+**Political category removed entirely.** 6 cards total across 3 categories, produced by **two PARALLEL API calls** (launched concurrently, each renders into its own sub-group(s) the moment it settles — genuinely progressive rendering, not a staged sequence):
 
-#### Call 1 — Standard News (6 cards)
-- Prompt: `pressGenPrompt()`
+#### Call A — Breaking News + Controversy, merged (4 cards)
+- Prompt: `breakingControversyGenPrompt(useDirectWording)`
 - Search: ON always (needs live news)
-- Returns: 2 Political + 2 Breaking News + 2 Kannada Film
-- On fail: entire run aborts
+- Returns: 2 Breaking News + 2 Controversy in one call, each card carrying its own full caption fields (no separate caption call)
+- Controversy angle uses **direct/raw wording** by default (`useDirectWording=true`) — the softened, filter-safe phrasing from the old dual-call design was dropped per spec
+- **Safety-block fallback**: if the direct-wording attempt is blocked/fails, one automatic retry fires with `useDirectWording=false` (softer, filter-safe phrasing). If that also fails: warn log + toast + a **skipped-notice card** covering both Breaking News and Controversy sub-groups, with a **↻ Retry Breaking & Controversy** button (`retryCallA()`) that re-runs only Call A — Call B's (Film) results & quota are untouched
+- Runs with `{failFast:true}` on both the direct and fallback attempts (a block is a block, not a network blip — no point sitting through the full backoff ladder)
 
-#### Call 2 — Controversy (2 cards)
-- Prompt: `controversyGenPrompt()` — reworded to filter-safe meta-language ("sharp, pointed political satire", "most talked-about controversies") after the old wording ("explosive", "no topic off-limits") tripped Gemini's prompt filters
-- Search: ON always · runs with `{failFast:true}` (1 retry max)
-- On block/failure: warn log + toast + visible **skipped-notice card** in the Controversy sub-group with a **↻ Retry Controversy** button that re-runs only Call 2 (Call 1 results & quota untouched). Button shows only when Controversy came back empty
+#### Call B — Kannada Film (2 cards)
+- Prompt: `kannadaFilmGenPrompt()`
+- Search: ON always · normal retry ladder (less block-prone than Controversy)
+- Returns: 2 Kannada Film cards with their own captions
 
 **Skeleton sequence:**
-- Run starts → 6 skeletons, both calls fire in parallel
-- Call 1 settles → 6 cards render in sub-groups, Controversy sub-group shows 2 skeletons
-- Call 2 settles → Controversy sub-group updates in-place (cards, or skipped-notice + retry)
+- Run starts → all 3 sub-groups (Controversy, Breaking News, Kannada Film) show skeletons, both calls fire in parallel
+- Whichever call settles first updates its sub-group(s) in place; the other sub-group keeps its skeletons until its call settles
+- If Call A ultimately fails, its two sub-groups are replaced by one skipped-notice + retry; Kannada Film renders independently regardless
 
-**Category normalization:** `normalizeCategory()` maps drifting model strings ("Politics", "Breaking", "Film"…) onto the 4 canonical sub-groups; unrecognised categories render in a 📌 "Other" sub-group instead of vanishing silently.
+**Category normalization:** `normalizeCategory()` maps drifting model strings ("Breaking", "Film"…) onto the 3 canonical sub-groups; unrecognised categories render in a 📌 "Other" sub-group instead of vanishing silently.
 
 **Sub-group structure (all start expanded, no persistence):**
 ```
-🗞 Political    · 2 cards  ▾
 🔥 Controversy  · 2 cards  ▾
 📰 Breaking News· 2 cards  ▾
 🎬 Kannada Film · 2 cards  ▾
 ```
 
-**Image prompt formats** (all end with a Kanglish instruction):
-- Political / Controversy: `"Generate an 4K, Meme Style Image, 1:1 ratio, " + punchline + ", " + summary + ", on-image text in a natural Kannada-English (Kanglish) mix, Latin script only"`
-- Breaking News / Kannada Film: `"Generate 4k Memes style Image (1:1 ratio), " + punchline + ", " + summary + ", on-image text in a natural Kannada-English (Kanglish) mix, Latin script only"`
+**Image prompt formats** (Kanglish trailing sentence removed; replaced with an upfront language directive):
+- Breaking News / Controversy: `"Generate 4k Meme's style Image (1:1 ratio), Text Language Kannada + English (Mix), " + punchline + ", " + summary`
+- Kannada Film: `"Generate 4k Meme's style Image (1:1 ratio), Text Language Kannada + English (Mix), " + summary` (no punchline)
 
-**Caption format:** witty caption + (new line) neutral 2-line news summary + EXACTLY 4 hashtags on the final line.
+**Caption format (v9 — split JSON fields, assembled client-side):**
+Each card returns `tagline`, `summary_3line`, and `hashtags` (array of exactly 4) as **separate JSON fields** instead of one pre-formatted caption string. `assembleCaption(tagline, summary3line, hashtags)` joins them client-side as: Tagline ⏎ 3-line summary ⏎ 4 hashtags. This was the fix for hashtags appearing mid-caption — the model can no longer misplace a hashtag inside free text because it never formats the caption as one block; the fields are joined in JS after the fact.
+`CAPTION_FIELD_SPEC` (shared block injected into both prompts) also instructs the model to search current Instagram/Facebook trending caption styles and currently-active hashtags for the story, rather than writing generic evergreen tags.
 
-**Uniqueness / dedup (July 2026):**
-- Both prompts carry a distinct-stories rule (6 different stories in Call 1; 2 different controversies in Call 2)
-- `controversyGenPrompt(excludeHeadlines)` accepts an exclusion list injected as "ALREADY COVERED — pick DIFFERENT controversies"
-- Client-side `dedupeControversy()` (word-overlap similarity ≥ 0.6 on headline or summary via `storiesSimilar`) runs after both calls settle
-- On collision: ONE automatic Controversy retry with Call 1 headlines excluded; falls back to the unique subset if the retry also collides/fails
-- Manual ↻ Retry Controversy also passes the exclusion list and dedupes
+**Uniqueness / dedup (v9 — cross-call only):**
+- In-prompt uniqueness rule inside Call A forces Breaking News stories ≠ Controversy stories (single call, so this is a prompt instruction, not a client-side check)
+- `dedupeAcrossCalls(callAItems, callBItems)` (word-overlap similarity ≥ 0.6 on headline or summary via `storiesSimilar`) drops any Kannada Film card that duplicates a Breaking/Controversy story, run after either call settles and again once both are in
+- The old single-call "Call 1 vs Controversy" dedup + auto-retry-with-exclusion-list flow is obsolete and removed (there's no longer a within-category collision to guard against — Call A's uniqueness is now a prompt rule)
 
-**Virality Agent (3rd call, July 2026):**
-- Non-blocking `runViralityAgent()` fires after cards render (and after Controversy retry); own AbortController (`viralityCtrl`), aborted on new Memes runs
+**Virality Agent (3rd call, unchanged from v8):**
+- Non-blocking `runViralityAgent()` fires after both calls settle; own AbortController (`viralityCtrl`), aborted on new Memes runs
 - `viralityGenPrompt(items)` — search-grounded, `failFast`, kind `"virality"` (2600 tokens)
 - Returns per card: `viral_score` 0-100 + `viral_band` High/Medium/Low; per hashtag: score, band, status Live/Inactive/Risky
+- `extractHashtags(item)` now reads the `hashtags` array field directly (falls back to regex-scanning `caption` only if the array is missing)
 - UI: `.viral-wrap` under the caption — trend pill "🔥 High · ~78% viral" + hashtag chips with status dot, band/%, and IG↗/FB↗ verify links (`instagram.com/explore/tags/…`, `facebook.com/hashtag/…`)
 - Cards matched via `card.dataset.h` (first 80 chars of headline); tags sanitised to `[A-Za-z0-9_]` before innerHTML
 - Scores are Gemini estimates from live search — NOT official IG/FB metrics (no free API exposes those)
-- On failure: pill becomes "⚠︎ click to retry" (re-runs the whole batch); Memes run now costs 3 API calls
+- On failure: pill becomes "⚠︎ click to retry" (re-runs the whole batch); Memes run now costs 3 API calls total (Call A + Call B + Virality)
 
 **JSON schema per card:**
 ```json
 {
-  "category": "Political|Breaking News|Kannada Film|Controversy",
+  "category": "Breaking News|Controversy|Kannada Film",
   "headline": "string",
-  "summary": "string",
-  "punchline": "string",
+  "summary": "string (internal use — image prompt only, not shown in caption)",
+  "punchline": "string (Breaking News/Controversy only)",
   "image_prompt": "string",
-  "caption": "string (ends with 4 hashtags)"
+  "tagline": "string",
+  "summary_3line": "string (exactly 3 lines, \\n-separated)",
+  "hashtags": ["#tag1","#tag2","#tag3","#tag4"]
 }
 ```
 
@@ -212,8 +217,11 @@ When `useSearch=0`, calls auto-route to `gemini-2.5-flash-lite` (30 RPM, fastest
 2. Option 1: Search next `lookahead` hours (72h or 7d) for significant Hindu calendar events
 3. Option 2 (fallback): Research today's Panchang (tithi/nakshatra/vrat), verified against today's actual date
 
-**Image prompts** end with `", any on-image text in a respectful Kannada-English (Kanglish) mix, Latin script only"`.
-**Caption format:** devotional caption + (new line) 2-line significance/timings summary + 4 hashtags.
+**Image prompts (v9):** the Kanglish trailing sentence was removed; each prefix now carries an upfront language directive instead —
+- Image 1 (Cinematic): `"Generate 4k Cinematic style image (1:1) with warm ivory background, Text Language Kannada + English (Mix), " + event_name + ", " + god_name + ", " + god_significance`
+- Image 2 (Vedic): `"Generate 4k Vedic style image (1:1) with warm ivory background, Text Language Kannada + English (Mix), " + event_name + ", " + day + " " + date + ", " + timings + ", " + key_rituals`
+
+**Caption format (v9 — split JSON fields, assembled client-side, same pattern as Memes):** devotional `caption` (kept) + `summary_3line` (significance/timings in exactly 3 lines, was 2) + `hashtags` (array of 4) — joined client-side via `assembleCaption(caption, summary_3line, hashtags)`. Vedic Video Agent is untouched and still returns a single pre-formatted `caption` string.
 
 **Karnataka note:** Uses Amanta lunar system (South Indian convention) over North Indian Purnimanta when dates differ.
 
@@ -229,7 +237,9 @@ When `useSearch=0`, calls auto-route to `gemini-2.5-flash-lite` (30 RPM, fastest
   "god_name": "string",
   "god_significance": "string",
   "image_prompt": "string",
-  "caption": "string (ends with 4 hashtags)",
+  "caption": "string (devotional caption only, no hashtags)",
+  "summary_3line": "string (exactly 3 lines, \\n-separated)",
+  "hashtags": ["#SanatanDharma","#tag2","#tag3","#tag4"],
   "best_posting_time": "string"
 }
 ```
@@ -332,7 +342,7 @@ The `repairJsonString(t)` function handles malformed model output:
 | Pro models | Paid-only since April 2026 — free key users will get rate limit errors |
 | Google Search grounding | Available only via Gemini — no alternative free provider |
 | file:// protocol | Gemini API blocked from local file — must be hosted (localhost or web) |
-| Safety blocks | Controversy cards may be blocked by Gemini's safety filters regardless of prompt wording |
+| Safety blocks | Controversy is merged into the same call as Breaking News (v9) — a safety block now risks both, mitigated by an automatic filter-safe-wording retry, then a manual ↻ Retry Breaking & Controversy button; Kannada Film (separate call) is unaffected either way |
 | Gemini 2.0 models | Shut down June 1, 2026 — removed from all lists |
 | Single Gemini key | No key rotation — separate Google Cloud projects needed for more quota |
 | No caching | All runs are live — decided against caching for freshness |
@@ -402,3 +412,13 @@ The `repairJsonString(t)` function handles malformed model output:
 | Captions restructured: caption + 2-line summary + 4 hashtags (Memes + Vedic Image) | ✅ Shipped |
 | Vedic outdated-info fix: live IST date anchor + future-only event rule in eventSelectionBlock | ✅ Shipped |
 | Vedic Image 2 caption removed from card UI (JSON unchanged) | ✅ Shipped |
+| **v9:** Political category removed — Memes now 6 cards (Controversy, Breaking News, Kannada Film) | ✅ Shipped |
+| **v9:** Memes restructured to 2 calls — Call A (Breaking News + Controversy, merged) + Call B (Kannada Film); old 3-call (Call 1/Call 2/Virality-only-separate) dual-call design retired | ✅ Shipped |
+| **v9:** Progressive rendering — each sub-group updates the moment its call settles, independent of the other call | ✅ Shipped |
+| **v9:** Controversy wording switched to direct/raw (softened filter-safe wording now only used as automatic fallback on safety block) | ✅ Shipped |
+| **v9:** Kanglish trailing-sentence instruction replaced with upfront "Text Language Kannada + English (Mix)" directive (Memes + Vedic Image; Vedic Video untouched) | ✅ Shipped |
+| **v9:** Captions restructured to split JSON fields (`tagline`/`caption` + `summary_3line` + `hashtags[4]`), assembled client-side — fixes hashtags appearing mid-caption | ✅ Shipped |
+| **v9:** Caption generation folded into the main content calls (no separate caption-agent call) — captions are now trend-aware (search current IG/FB trending styles + live hashtags) at no extra API cost beyond the 2 content calls | ✅ Shipped |
+| **v9:** Cross-call dedup (`dedupeAcrossCalls`) between Call A and Call B replaces the old single-call Call-1-vs-Controversy dedup/retry flow | ✅ Shipped |
+| **v9:** Vedic Image caption summary widened from 2 lines to 3 lines | ✅ Shipped |
+| **v9:** Token budgets re-split: `pressA:3000, pressB:1800` (was single `press:3500`) | ✅ Shipped |
