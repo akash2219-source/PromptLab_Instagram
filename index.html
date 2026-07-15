@@ -1153,7 +1153,7 @@ const BACKOFFS = [6000, 15000, 30000];
 const FALLBACK_CHAIN = ["gemini-2.5-flash-lite", "gemini-3.1-flash-lite"];
 
 // Right-sized output token budgets per engine — avoids padding toward 8k
-const MAX_TOKENS = { pressA:3000, pressB:1800, divine:2500, video:2500, virality:2600 };
+const MAX_TOKENS = { pressA:3000, pressB:2400, divine:2500, video:2500, virality:2600 };
 
 async function callGemini(prompt, useSearch, modelOverride, signal, kind, opts={}){
   // Auto-route to Flash-Lite when search is off: 2× free RPM, fastest for pure JSON
@@ -1557,22 +1557,86 @@ function repairJsonString(t){
   return out;
 }
 
+// Finds the first top-level '[' and its balanced matching ']', scanning string
+// state so brackets inside string values (or the model output otherwise) never
+// confuse the match. This replaces the old "first [ .. last ]" approach, which
+// could grab the closing bracket of a NESTED array (e.g. a card's "hashtags"
+// array) instead of the outer card array when the model's output was truncated
+// or had trailing junk after the real array.
+function findOuterArrayBounds(t){
+  let start = -1, depth = 0, inStr = false, escape = false;
+  for(let i=0;i<t.length;i++){
+    const ch = t[i];
+    if(inStr){
+      if(escape){ escape=false; }
+      else if(ch==="\\"){ escape=true; }
+      else if(ch==='"'){ inStr=false; }
+      continue;
+    }
+    if(ch==='"'){ inStr=true; continue; }
+    if(ch==="["){
+      if(depth===0 && start===-1) start=i;
+      depth++;
+    } else if(ch==="]"){
+      depth--;
+      if(depth===0 && start!==-1) return {start, end:i};
+    }
+  }
+  return null;
+}
+
 function extractArray(text){
   let t = text.trim().replace(/^```(?:json)?/i,"").replace(/```$/,"").trim();
-  const s = t.indexOf("["), e = t.lastIndexOf("]");
-  if(s===-1||e===-1||e<s) throw new Error("Could not find JSON in the model output.");
-  const slice = t.slice(s, e+1);
+  const bounds = findOuterArrayBounds(t);
+  let slice;
+  if(bounds){
+    slice = t.slice(bounds.start, bounds.end+1);
+  } else {
+    // Fallback for genuinely malformed input the bracket scan can't balance —
+    // let the repair pass below have a shot at it instead of failing outright.
+    const s = t.indexOf("["), e = t.lastIndexOf("]");
+    if(s===-1||e===-1||e<s) throw new Error("Could not find JSON in the model output.");
+    slice = t.slice(s, e+1);
+  }
 
   // Fast path: well-formed JSON parses immediately, no repair needed.
-  try{ return JSON.parse(slice); }catch(firstErr){}
+  try{ const p = JSON.parse(slice); if(Array.isArray(p)) return p; }catch(firstErr){}
 
   // Slow path: the model likely left an unescaped quote/control character
   // inside a string value. Repair it with a real scan, then retry.
   try{
-    return JSON.parse(repairJsonString(slice));
+    const p2 = JSON.parse(repairJsonString(slice));
+    if(Array.isArray(p2)) return p2;
+    throw new Error("parsed JSON was not an array");
   }catch(secondErr){
     throw new Error(`Model output wasn't valid JSON even after repair (${secondErr.message}). Try running again.`);
   }
+}
+
+// A "valid" card must have at least one of the fields a real card would carry.
+// Filters out fieldless objects/strings that slip through when the outer-array
+// match still lands on the wrong bracket (e.g. an all-string hashtags array).
+function validateCards(items){
+  if(!Array.isArray(items)) return [];
+  return items.filter(it => it && typeof it==="object" && !Array.isArray(it) && (
+    String(it.headline||"").trim() ||
+    String(it.image_prompt||"").trim() ||
+    String(it.video_prompt||"").trim() ||
+    String(it.event_name||"").trim()
+  ));
+}
+
+// extractArray + validateCards + maxItems slice, with a diagnostic raw-output
+// snippet thrown when nothing usable comes back — so a bad run's log line
+// actually shows what Gemini sent instead of a generic "0 cards" dead end.
+function extractValidCards(genText, maxItems){
+  const raw = extractArray(genText);
+  const valid = validateCards(raw);
+  if(!valid.length){
+    const snippet = String(genText||"").trim().slice(0,150).replace(/\s+/g," ");
+    throw new Error(`Model returned ${raw.length} item(s) but none had usable card fields — raw start: "${snippet}${genText && genText.length>150 ? "…" : ""}"`);
+  }
+  return valid.slice(0, maxItems);
 }
 
 /* ============================================================
@@ -1604,7 +1668,7 @@ function normalizeCategory(cat){
   const c = String(cat||"").toLowerCase();
   if(c.includes("controv")) return "Controversy";
   if(c.includes("break"))   return "Breaking News";
-  if(c.includes("film")||c.includes("kannada")||c.includes("cinema")||c.includes("sandalwood")) return "Kannada Film";
+  if(c.includes("film")||c.includes("kannada")||c.includes("cinema")||c.includes("sandalwood")||c.includes("movie")) return "Kannada Film";
   return "Other";
 }
 
@@ -1614,9 +1678,11 @@ function toggleSubgroup(sg){ sg.classList.toggle("sg-collapsed"); }
 // opts.loadingCategories: Set of category names still pending (shows skeletons).
 // opts.callAFailed: true → shows a single skipped-notice + retry for Call A
 //                   (Breaking News + Controversy) instead of those two sub-groups.
+// opts.callBFailed: true → shows a skipped-notice + retry for Call B (Kannada Film).
 function renderPressSubGroups(items, opts={}){
   const loadingCategories = opts.loadingCategories || new Set();
   const callAFailed = !!opts.callAFailed;
+  const callBFailed = !!opts.callBFailed;
   const el = laneEl("press");
   el.innerHTML = "";
 
@@ -1630,6 +1696,16 @@ function renderPressSubGroups(items, opts={}){
     d.append(big,p,rb);
     el.appendChild(d);
   }
+  if(callBFailed){
+    const d=document.createElement("div"); d.className="empty-state sg-notice";
+    const big=document.createElement("div"); big.className="big"; big.textContent="🎬";
+    const p=document.createElement("p"); p.textContent="Kannada Film skipped — Gemini returned no usable cards for this call.";
+    const rb=document.createElement("button"); rb.className="btn btn-ghost retry-controversy"; rb.id="retryCallBBtn";
+    rb.innerHTML='<span class="bi">↻</span><span class="bt">Retry Kannada Film</span>';
+    rb.addEventListener("click", retryCallB);
+    d.append(big,p,rb);
+    el.appendChild(d);
+  }
 
   const byCategory = {};
   items.forEach(it=>{
@@ -1640,6 +1716,7 @@ function renderPressSubGroups(items, opts={}){
   let gIdx = 0;
   PRESS_SUBGROUP_META.forEach(({category,icon,label})=>{
     if(callAFailed && CALL_A_CATEGORIES.includes(category)) return; // notice already shown above
+    if(callBFailed && category==="Kannada Film") return; // notice already shown above
     const catItems = byCategory[category]||[];
     const isLoading = loadingCategories.has(category);
     const show = catItems.length>0 || isLoading;
@@ -1671,9 +1748,10 @@ async function retryCallA(){
   renderPressSubGroups(filmItems, { loadingCategories:new Set(["Breaking News","Controversy"]) });
   log("Retrying Breaking News & Controversy…","press");
   try{
-    // Manual retry gets the full retry ladder — the user explicitly asked for it
+    // Manual retry gets the full retry ladder — the user explicitly asked for it.
+    // Search is always ON for Memes calls regardless of the useSearch toggle.
     const genText=await callGemini(breakingControversyGenPrompt(true),true,null,ctrl.signal,"pressA");
-    let items=extractArray(genText).slice(0,4);
+    let items=extractValidCards(genText,4);
     const dd=dedupeAcrossCalls(items,filmItems);
     let film=filmItems;
     if(dd.dropped.length){ log(`Dedup — dropped ${dd.dropped.length} Kannada Film card(s) duplicating retried stories.`,"warn"); film=dd.kept; }
@@ -1686,6 +1764,36 @@ async function retryCallA(){
     else{
       log(`Retry failed: ${err.message}`,"err"); toast(err.message||"Retry failed","err");
       renderPressSubGroups(filmItems, { callAFailed:true });
+    }
+  }finally{
+    abortCtrl["press"]=null;
+    setBusy("press",false);
+  }
+}
+
+async function retryCallB(){
+  if(!preflight()) return;
+  if(busyFlag("press")) return;
+  setBusy("press", true);
+  const ctrl=new AbortController(); abortCtrl["press"]=ctrl;
+  const abItems = data["press"].filter(it=>normalizeCategory(it.category)!=="Kannada Film");
+  renderPressSubGroups(abItems, { loadingCategories:new Set(["Kannada Film"]) });
+  log("Retrying Kannada Film…","press");
+  try{
+    // Manual retry gets the full retry ladder. Search always ON for Memes calls.
+    const genText=await callGemini(kannadaFilmGenPrompt(),true,null,ctrl.signal,"pressB");
+    let items=extractValidCards(genText,2);
+    const dd=dedupeAcrossCalls(abItems,items);
+    if(dd.dropped.length){ log(`Dedup — dropped ${dd.dropped.length} Kannada Film card(s) duplicating existing stories.`,"warn"); items=dd.kept; }
+    data["press"]=[...abItems,...items];
+    renderPressSubGroups(data["press"], {});
+    log(`Retry — ${items.length} prompt(s) drafted.`,"ok");
+    runViralityAgent();
+  }catch(err){
+    if(err.name==="AbortError"){ log("Retry stopped by user.","sys"); renderPressSubGroups(abItems, {}); }
+    else{
+      log(`Retry failed: ${err.message}`,"err"); toast(err.message||"Retry failed","err");
+      renderPressSubGroups(abItems, { callBFailed:true });
     }
   }finally{
     abortCtrl["press"]=null;
@@ -1811,12 +1919,13 @@ async function runMemesCrew(){
   spinOn("runMemes");
   if(viralityCtrl){ viralityCtrl.abort(); viralityCtrl=null; }
   const ctrl=new AbortController(); abortCtrl["press"]=ctrl;
-  const grounded=!!cfg.useSearch;
+  // Memes calls always run with search ON (live news is the whole point) —
+  // independent of the useSearch toggle, which only affects the Vedic Engine.
 
   // v9: 2 calls, 6 cards total, no Political. Call A = Breaking News + Controversy
   // (merged — direct/raw wording, no softened language). Call B = Kannada Film.
   // Both render progressively into their sub-groups the moment each settles.
-  const state = { aItems:[], aDone:false, aFailed:false, bItems:[], bDone:false };
+  const state = { aItems:[], aDone:false, aFailed:false, bItems:[], bDone:false, bFailed:false };
 
   function loadingSet(){
     const s = new Set();
@@ -1827,7 +1936,11 @@ async function runMemesCrew(){
   function rerender(){
     const items = [...state.aItems, ...state.bItems];
     data["press"] = items;
-    renderPressSubGroups(items, { loadingCategories: loadingSet(), callAFailed: state.aFailed && state.aDone });
+    renderPressSubGroups(items, {
+      loadingCategories: loadingSet(),
+      callAFailed: state.aFailed && state.aDone,
+      callBFailed: state.bFailed && state.bDone
+    });
   }
 
   rerender(); // initial: all 3 sub-groups show skeletons
@@ -1836,13 +1949,13 @@ async function runMemesCrew(){
   async function runCallA(){
     try{
       // Direct/raw wording first (failFast — its common failure is a block, not a blip).
-      const t = await callGemini(breakingControversyGenPrompt(true), grounded, null, ctrl.signal, "pressA", {failFast:true});
-      return extractArray(t).slice(0,4);
+      const t = await callGemini(breakingControversyGenPrompt(true), true, null, ctrl.signal, "pressA", {failFast:true});
+      return extractValidCards(t, 4);
     }catch(err){
       if(err.name==="AbortError") throw err;
       log(`Breaking News/Controversy call blocked (${err.message}) — retrying with filter-safe wording…`,"warn");
-      const t2 = await callGemini(breakingControversyGenPrompt(false), grounded, null, ctrl.signal, "pressA", {failFast:true});
-      return extractArray(t2).slice(0,4);
+      const t2 = await callGemini(breakingControversyGenPrompt(false), true, null, ctrl.signal, "pressA", {failFast:true});
+      return extractValidCards(t2, 4);
     }
   }
 
@@ -1869,8 +1982,8 @@ async function runMemesCrew(){
     rerender();
   });
 
-  const pB = callGemini(kannadaFilmGenPrompt(), grounded, null, ctrl.signal, "pressB")
-    .then(t=>extractArray(t).slice(0,2))
+  const pB = callGemini(kannadaFilmGenPrompt(), true, null, ctrl.signal, "pressB")
+    .then(t=>extractValidCards(t, 2))
     .then(items=>{
       if(ctrl.signal.aborted) return;
       state.bItems = items; state.bDone = true;
@@ -1878,8 +1991,9 @@ async function runMemesCrew(){
       crossDedupe(); rerender();
     }).catch(err=>{
       if(err.name==="AbortError") throw err;
-      state.bDone = true;
+      state.bDone = true; state.bFailed = true;
       log(`Kannada Film — skipped: ${err.message||"failed"}`,"warn");
+      toast("Kannada Film skipped — use ↻ Retry","err");
       rerender();
     });
 
@@ -1921,7 +2035,7 @@ async function runCrew(kind){
       ? `Scout: researching event significance (live search ON, next ${cfg.lookahead}h IST)…`
       : `Scout: live search OFF — drafting from model knowledge (quota-saving mode)…`, kind);
     const genText = await callGemini(meta.genPrompt(cfg.lookahead), grounded, null, ctrl.signal, kind);
-    let items = extractArray(genText).slice(0, meta.maxItems||2);
+    let items = extractValidCards(genText, meta.maxItems||2);
     log(`Crew drafted ${items.length} prompt(s).`, kind);
     data[kind] = items;
     renderCards(kind);

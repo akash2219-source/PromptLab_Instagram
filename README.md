@@ -110,7 +110,7 @@ const BACKOFFS = [6000, 15000, 30000]; // ms — used for 500/503 + empty-respon
 
 ### Per-Engine Token Budgets
 ```js
-const MAX_TOKENS = { pressA:3000, pressB:1800, divine:2500, video:2500, virality:2600 };
+const MAX_TOKENS = { pressA:3000, pressB:2400, divine:2500, video:2500, virality:2600 };
 ```
 `pressA` = Breaking News + Controversy call (4 cards, bigger prompt). `pressB` = Kannada Film call (2 cards, lighter). Captions were folded into these calls (no separate caption call), which is what keeps the budgets tight despite each card now returning `tagline`/`summary_3line`/`hashtags` on top of the prompt fields.
 
@@ -422,3 +422,9 @@ The `repairJsonString(t)` function handles malformed model output:
 | **v9:** Cross-call dedup (`dedupeAcrossCalls`) between Call A and Call B replaces the old single-call Call-1-vs-Controversy dedup/retry flow | ✅ Shipped |
 | **v9:** Vedic Image caption summary widened from 2 lines to 3 lines | ✅ Shipped |
 | **v9:** Token budgets re-split: `pressA:3000, pressB:1800` (was single `press:3500`) | ✅ Shipped |
+| **v9.1:** Fixed Kannada Film ghost cards — `extractArray` rewritten with bracket-depth/string-aware scanning to find the true outer array instead of "first `[` to last `]`" (was grabbing a nested `hashtags` array on truncated output) | ✅ Shipped |
+| **v9.1:** Added `validateCards`/`extractValidCards` — rejects fieldless/malformed items and throws a diagnostic error with a raw-output snippet instead of rendering empty cards | ✅ Shipped |
+| **v9.1:** `pressB` token budget bumped 1800 → 2400 (truncation risk on grounded Kannada Film call) | ✅ Shipped |
+| **v9.1:** `normalizeCategory` now also matches "movie" for Kannada Film | ✅ Shipped |
+| **v9.1:** Memes calls (Call A + Call B) now force search ON always, independent of the `useSearch` toggle (Vedic Engine still respects it) | ✅ Shipped |
+| **v9.1:** Added ↻ Retry Kannada Film — Call B now gets the same skipped-notice + manual-retry pattern as Call A on failure | ✅ Shipped |
