@@ -240,6 +240,20 @@
   .cat-breaking{color:var(--blue)}
 
   .card-body{padding:15px 16px;display:flex;flex-direction:column;gap:12px}
+  .linked-set{
+    position:relative;display:flex;flex-direction:column;gap:12px;
+    padding-left:14px;margin-left:2px;
+    border-left:2px dashed rgba(255,46,147,.35);
+  }
+  .linked-set::before{
+    content:"";position:absolute;left:-2px;top:4px;bottom:26px;width:2px;
+    background:linear-gradient(var(--pink),var(--purple),var(--blue));opacity:.55;
+  }
+  .linked-note{
+    display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted-2);
+    font-family:"IBM Plex Mono";letter-spacing:.02em;padding:2px 0 0;
+  }
+  .linked-note .link-ic{flex:none}
   .prompt-group-label{font-family:"IBM Plex Mono";font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2);margin:2px 0 -2px}
   .field-block label{display:flex;align-items:center;gap:8px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px;font-weight:600;cursor:pointer;user-select:none;min-height:32px}
   .field-block label .pill{font-family:"IBM Plex Mono";font-size:10px;text-transform:none;letter-spacing:0;background:var(--field);padding:2px 7px;border-radius:6px;color:var(--muted)}
@@ -1160,6 +1174,8 @@ For EACH of the 4 selected stories produce:
 - "meme_prompt": a string that MUST start EXACTLY with "Generate a 4k, Memes style Image (1:1 ratio), " followed by "Text Language Kannada + English (Mix), " then a satirical/comedic visual summary of the story.
 - "summary_prompt": a string that MUST start EXACTLY with "Generate a 4k, Summary style Image (1:1 ratio), " followed by "Text Language Kannada + English (Mix), " then a calmer background-context visual prompt.
 
+INTERLINK RULE (applies within each story only, across its own hook_prompt/meme_prompt/summary_prompt): all 3 image prompts for the SAME story MUST depict the SAME visual world — identical main subject/character description (same identity, outfit, distinguishing features), the SAME setting/location, and the SAME core props or symbols, so the 3 images read as one connected set (hook = dramatic close-up angle, meme = satirical exaggerated angle, summary = calm wide/establishing angle of that same scene). Do NOT invent a different character, outfit, or location between the 3 prompts of one story. The 3 prompts of DIFFERENT stories must NOT share subjects/settings with each other.
+
 Do NOT put hashtags inside "tagline" or "summary" — they belong ONLY in the "hashtags" array.
 JSON rule: escape any double-quote inside a string value with \\".
 Output must match the provided response schema exactly — every field on every object is required, never omit one.
@@ -1318,9 +1334,14 @@ function buildCard(kind, it, i){
 
   const body=document.createElement("div"); body.className="card-body";
 
-  body.appendChild(fieldBlock("Hook style image", "1:1", it.hook_prompt, "prompt-box"));
-  body.appendChild(fieldBlock("Meme style image", "1:1", it.meme_prompt, "prompt-box"));
-  body.appendChild(fieldBlock("Summary style image", "1:1", it.summary_prompt, "prompt-box"));
+  const linkedSet=document.createElement("div"); linkedSet.className="linked-set";
+  linkedSet.appendChild(fieldBlock("Hook style image", "1:1", it.hook_prompt, "prompt-box"));
+  linkedSet.appendChild(fieldBlock("Meme style image", "1:1", it.meme_prompt, "prompt-box"));
+  linkedSet.appendChild(fieldBlock("Summary style image", "1:1", it.summary_prompt, "prompt-box"));
+  const linkNote=document.createElement("div"); linkNote.className="linked-note";
+  linkNote.innerHTML = `<span class="link-ic">🔗</span> Linked set — same subject &amp; scene across all 3, different angle each`;
+  linkedSet.appendChild(linkNote);
+  body.appendChild(linkedSet);
 
   const captionText = assembleCaption(it.tagline, it.summary, it.hashtags);
   body.appendChild(fieldBlock("Caption", "summary + 4 tags", captionText, "caption-box"));
