@@ -22,7 +22,6 @@
     --pink:#ff2e93;
     --purple:#7c3aed;
     --blue:#3b82f6;
-    --orange:#ff8c40;
 
     --ok:#43d9a3;
     --fix:#ffc83d;
@@ -105,7 +104,7 @@
     .pwwrap .inp{padding-right:52px}
     .copybtn{padding:7px 12px;min-height:36px;font-size:11.5px}
     .btn-danger{min-height:44px}
-    .field-block label{min-height:40px}
+    .field-block .fb-head{min-height:40px}
     .seg button{height:40px}
     .xbtn{width:40px;height:40px}
     .cToggle{width:32px;height:32px}
@@ -156,7 +155,6 @@
   .btn-stop.visible{display:inline-flex}
   .btn-stop:hover{background:rgba(255,107,129,.22)}
   .btn .spin{width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .7s linear infinite}
-  .btn-ghost .spin{border-color:rgba(255,255,255,.25);border-top-color:#fff}
   @keyframes spin{to{transform:rotate(360deg)}}
 
   /* ---------- Activity console ---------- */
@@ -254,9 +252,30 @@
     font-family:"IBM Plex Mono";letter-spacing:.02em;padding:2px 0 0;
   }
   .linked-note .link-ic{flex:none}
-  .prompt-group-label{font-family:"IBM Plex Mono";font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2);margin:2px 0 -2px}
-  .field-block label{display:flex;align-items:center;gap:8px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px;font-weight:600;cursor:pointer;user-select:none;min-height:32px}
-  .field-block label .pill{font-family:"IBM Plex Mono";font-size:10px;text-transform:none;letter-spacing:0;background:var(--field);padding:2px 7px;border-radius:6px;color:var(--muted)}
+  .seq-flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:"IBM Plex Mono";font-size:10.5px;color:var(--muted-2);letter-spacing:.02em;margin-bottom:2px}
+  .seq-flow b{color:var(--muted);font-weight:600}
+  .seq-flow .arw{color:var(--pink)}
+  .anchor-box{
+    font-family:"IBM Plex Mono";font-size:12px;line-height:1.6;color:#cfc7de;
+    background:rgba(255,46,147,.06);border:1px solid rgba(255,46,147,.28);border-radius:var(--r-md);
+    padding:11px 13px;white-space:pre-wrap;word-break:break-word;
+  }
+  .field-block.collapsed .anchor-box{display:none}
+  .copyall{
+    align-self:flex-start;font-size:11.5px;font-weight:600;color:var(--muted);
+    border:1px solid var(--line);border-radius:9px;padding:7px 12px;display:inline-flex;gap:7px;align-items:center;
+    transition:.15s ease;letter-spacing:.02em;min-height:36px;
+  }
+  .copyall:hover{color:var(--text);border-color:var(--muted-2)}
+  .copyall.done{color:var(--ok);border-color:rgba(67,217,163,.4)}
+  .file-note{
+    margin-top:12px;font-size:12.5px;line-height:1.55;color:var(--fix);
+    background:rgba(255,200,61,.08);border:1px solid rgba(255,200,61,.35);border-radius:var(--r-md);padding:10px 12px;
+  }
+  .file-note[hidden]{display:none}
+  .field-block .fb-head{display:flex;align-items:center;gap:8px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px;font-weight:600;cursor:pointer;user-select:none;min-height:32px}
+  .field-block .fb-head .pill{font-family:"IBM Plex Mono";font-size:10px;text-transform:none;letter-spacing:0;background:var(--field);padding:2px 7px;border-radius:6px;color:var(--muted)}
+  .field-block .fb-head .seq{font-family:"Bricolage Grotesque";font-weight:800;font-size:10.5px;width:19px;height:19px;border-radius:6px;display:grid;place-items:center;flex:none;color:#fff;background:linear-gradient(135deg,var(--pink),var(--purple))}
   .field-block .fchev{flex:none;width:20px;height:20px;border-radius:6px;display:grid;place-items:center;color:var(--muted-2);transition:transform .25s ease}
   .field-block .fchev svg{width:12px;height:12px}
   .field-block.collapsed .fchev{transform:rotate(-90deg)}
@@ -404,7 +423,7 @@
     </div>
     <div class="chips">
       <span class="modelpill" id="modelPill" title="Selected Gemini model (change in Settings)">
-        <span class="dot" id="gemDot"></span>
+        <span class="dot"></span>
         <span class="mp-label">Gemini</span><b id="chipModel">—</b>
       </span>
       <button class="gear" id="openSettingsBtn">
@@ -416,20 +435,19 @@
 </header>
 
 <!-- ========== MEMES PANEL ========== -->
-<div id="panel-memes">
-
   <section class="wrap deck">
     <div class="deck-head">
       <p class="eyebrow">meme prompt studio</p>
       <h2>News → <span class="grad">Meme Prompts</span>.<br>Copy &amp; paste anywhere.</h2>
-      <p>Pulls live <span id="regionLabel">Karnataka</span> news, picks the 4 sharpest stories (2 Political Controversy + 2 Breaking News), and crafts 3 image prompts per story — Hook, Meme &amp; Summary style — plus a trend-aware caption.</p>
+      <p>Pulls live <span id="regionLabel">Karnataka</span> news, picks the 4 sharpest stories (2 Political Controversy + 2 Breaking News), and crafts a <b>3-frame continuation sequence</b> per story — frame 1 Hook → frame 2 Meme → frame 3 Summary, same subject and scene throughout — plus a shared caption. Post the 3 frames in order as one Reel.</p>
       <div class="runs">
         <button class="btn btn-primary" id="runMemes">
           <span class="bi">🗞️</span><span class="bt">Run Meme Crew</span>
         </button>
         <button class="btn btn-stop" id="stopMemes" aria-label="Stop run">🛑 Stop</button>
-        <button class="btn btn-ghost btn-clear" id="clearBtn-memes" title="Clear logs, results &amp; counters"><span class="bi">🧹</span><span class="bt">Clear</span></button>
+        <button class="btn btn-ghost btn-clear" id="clearBtn-memes" title="Clear logs, results &amp; API call counter"><span class="bi">🧹</span><span class="bt">Clear</span></button>
       </div>
+      <div class="file-note" id="fileNote" hidden></div>
     </div>
 
     <div class="console" id="console-memes">
@@ -454,7 +472,7 @@
         <span class="ic">🗞️</span>
         <div>
           <h3>Meme Crew</h3>
-          <div class="sub">grounded · live news · 4 stories × 3 image prompts</div>
+          <div class="sub">grounded · live news · 4 stories × 3-frame reel sequence</div>
         </div>
         <span class="count" style="margin-left:auto"><b id="countPress">0</b>/4</span>
         <button class="laneToggle" id="laneToggle-press" data-lane="press" aria-label="Collapse lane" aria-expanded="true" title="Hide/show this lane">
@@ -464,13 +482,11 @@
       <div class="cards" id="cardsPress">
         <div class="empty-state">
           <div class="big">🗞️</div>
-          <p>No memes yet. Run the crew to pull live news and craft 4 stories (2 Political Controversy + 2 Breaking News), each with 3 image prompts + a trend-aware caption.</p>
+          <p>No memes yet. Run the crew to pull live news and craft 4 stories (2 Political Controversy + 2 Breaking News), each as a 3-frame continuation sequence (Hook → Meme → Summary) plus a shared caption.</p>
         </div>
       </div>
     </div>
   </section>
-
-</div>
 
 <footer class="wrap">
   <b>PromptLab Studios</b> · generates prompts only (paste into your image/video tool of choice) · everything runs in your browser
@@ -604,39 +620,63 @@ let apiCalls = 0;
 let busyPress = false;
 const data = { press:[] };
 
+/* pendingWindow holds the segmented-control choice until Save is pressed,
+   so every field in the drawer commits at the same moment. */
+let pendingWindow = 24;
+
 function loadSettings(){
   try{ Object.assign(cfg, JSON.parse(localStorage.getItem(LS) || "{}")); }catch(e){}
-  document.getElementById("setGem").value = cfg.gem || "";
-  document.getElementById("setModel").value = cfg.model;
-  document.getElementById("setRegion").value = cfg.region;
+  syncDrawerFromCfg();
   document.getElementById("regionLabel").textContent = cfg.region;
-  document.querySelectorAll("#segWindow button").forEach(b=>{
-    b.classList.toggle("active", Number(b.dataset.v)===Number(cfg.window));
-  });
   setModelUI();
   refreshChips();
 }
+
+/* Fills the drawer from saved config — used on open and to discard edits on close. */
+function syncDrawerFromCfg(){
+  document.getElementById("setGem").value = cfg.gem || "";
+  const sel = document.getElementById("setModel");
+  if([...sel.options].some(o=>o.value===cfg.model)) sel.value = cfg.model;
+  document.getElementById("setRegion").value = cfg.region;
+  pendingWindow = Number(cfg.window) || 24;
+  document.querySelectorAll("#segWindow button").forEach(b=>{
+    b.classList.toggle("active", Number(b.dataset.v)===pendingWindow);
+  });
+}
+
 function saveSettings(){
   cfg.gem = document.getElementById("setGem").value.trim();
   cfg.model = document.getElementById("setModel").value;
   cfg.region = document.getElementById("setRegion").value.trim() || "Karnataka";
+  cfg.window = pendingWindow;
   document.getElementById("regionLabel").textContent = cfg.region;
-  localStorage.setItem(LS, JSON.stringify(cfg));
+  try{ localStorage.setItem(LS, JSON.stringify(cfg)); }
+  catch(e){ toast("Couldn't save to this browser's storage","err"); }
   refreshChips(); setModelUI();
   toast("Settings saved", "ok");
-  closeSettings();
+  closeSettings(true);
 }
 function setModelUI(){ document.getElementById("chipModel").textContent = cleanModelName(cfg.model); }
 function refreshChips(){
   document.getElementById("modelPill").classList.toggle("on", !!cfg.gem);
 }
-function setWindow(v,btn){ cfg.window=v; document.querySelectorAll("#segWindow button").forEach(b=>b.classList.remove("active")); btn.classList.add("active"); }
+function setWindow(v,btn){ pendingWindow=v; document.querySelectorAll("#segWindow button").forEach(b=>b.classList.remove("active")); btn.classList.add("active"); }
 
 /* ============================================================
    MODEL LIST — auto-refresh from Gemini API, 7-day TTL cache
    ============================================================ */
 const LS_MODELS   = "promptlab_model_cache";
 const MODEL_TTL   = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+
+const MODEL_NOTES = {
+  "gemini-3.1-flash-lite":  "GA · 30 RPM · best free throughput",
+  "gemini-3.5-flash":       "GA · 15 RPM · most intelligent free",
+  "gemini-3-flash-preview": "Preview · 10 RPM",
+  "gemini-2.5-flash":       "Stable · 15 RPM · default",
+  "gemini-2.5-flash-lite":  "Stable · 30 RPM · budget",
+  "gemini-3.1-pro-preview": "advanced intelligence · paid",
+  "gemini-2.5-pro":         "deep reasoning · paid",
+};
 
 const FALLBACK_MODELS = [
   { id:"gemini-3.1-flash-lite",  tier:"free", group:"gen3-free" },
@@ -685,7 +725,8 @@ function buildModelSelect(models, fetchedAt){
     ids.forEach(id => {
       const opt = document.createElement("option");
       opt.value = id;
-      opt.textContent = cleanModelName(id);
+      const note = MODEL_NOTES[id];
+      opt.textContent = note ? `${cleanModelName(id)} — ${note}` : cleanModelName(id);
       og.appendChild(opt);
     });
     sel.appendChild(og);
@@ -693,7 +734,15 @@ function buildModelSelect(models, fetchedAt){
 
   const allIds = models.map(m => m.id);
   const defaultFree = (groups["gen2-free"].includes("gemini-2.5-flash") ? "gemini-2.5-flash" : groups["gen2-free"][0]) || groups["gen3-free"][0] || allIds[0] || "";
-  sel.value = allIds.includes(current) ? current : defaultFree;
+  const resolved = allIds.includes(current) ? current : defaultFree;
+  sel.value = resolved;
+  /* Keep cfg + header chip in step with what the dropdown actually shows,
+     otherwise a run could fire at a model the key no longer has. */
+  if(resolved && resolved !== cfg.model){
+    if(!allIds.includes(cfg.model)) log(`${cleanModelName(cfg.model)} isn't available on this key — switched to ${cleanModelName(resolved)}.`, "warn");
+    cfg.model = resolved;
+    setModelUI();
+  }
 
   const lbl = document.getElementById("modelUpdatedLabel");
   if(fetchedAt){
@@ -788,8 +837,20 @@ function initModelList(){
 /* ============================================================
    SETTINGS DRAWER
    ============================================================ */
-function openSettings(){ document.getElementById("scrim").classList.add("open"); document.getElementById("drawer").classList.add("open"); }
-function closeSettings(){ document.getElementById("scrim").classList.remove("open"); document.getElementById("drawer").classList.remove("open"); }
+function openSettings(){
+  syncDrawerFromCfg();
+  document.getElementById("scrim").classList.add("open");
+  document.getElementById("drawer").classList.add("open");
+  setTimeout(()=>{ const f=document.getElementById("setGem"); if(f) f.focus({preventScroll:true}); }, 340);
+}
+/* saved=true means Save already committed; otherwise unsaved edits are discarded. */
+function closeSettings(saved){
+  const wasOpen = document.getElementById("drawer").classList.contains("open");
+  document.getElementById("scrim").classList.remove("open");
+  document.getElementById("drawer").classList.remove("open");
+  if(!saved) syncDrawerFromCfg();
+  if(wasOpen){ const g=document.getElementById("openSettingsBtn"); if(g) g.focus({preventScroll:true}); }
+}
 function togglePw(id,btn){ const el=document.getElementById(id); el.type = el.type==="password"?"text":"password"; btn.style.color = el.type==="text"?"var(--text)":"var(--muted)"; }
 
 /* ---- collapsible settings groups ---- */
@@ -899,7 +960,7 @@ function toast(msg, kind=""){
    ============================================================ */
 const BACKOFFS = [6000, 15000, 30000];
 const FALLBACK_CHAIN = ["gemini-2.5-flash-lite", "gemini-3.1-flash-lite"];
-const MAX_TOKENS = { search:1800, structure:3400 };
+const MAX_TOKENS = { search:1800, structure:6000 };
 
 async function callGemini(prompt, useSearch, modelOverride, signal, kind, opts={}){
   const autoModel = (!useSearch && !modelOverride) ? "gemini-2.5-flash-lite" : null;
@@ -1122,6 +1183,7 @@ function validateCards(items){
   if(!Array.isArray(items)) return [];
   return items.filter(it => it && typeof it==="object" && !Array.isArray(it) && (
     String(it.headline||"").trim() ||
+    String(it.visual_anchor||"").trim() ||
     String(it.hook_prompt||"").trim() ||
     String(it.meme_prompt||"").trim() ||
     String(it.summary_prompt||"").trim()
@@ -1139,9 +1201,9 @@ function extractValidCards(genText, maxItems){
 }
 
 /* ============================================================
-   PROMPT BUILDERS — MEME CREW (kartanews "4×3" logic)
+   PROMPT BUILDERS — MEME CREW ("4 × 3-frame sequence" logic)
    4 stories total (2 Political Controversy + 2 Breaking News),
-   3 image prompts per story (Hook / Meme / Summary style) +
+   3 CONSECUTIVE frames per story (1 Hook -> 2 Meme -> 3 Summary) +
    ONE shared caption (tagline + summary up to 4 lines + 4 hashtags)
    generated per STORY, not per image.
    ============================================================ */
@@ -1170,17 +1232,27 @@ For EACH of the 4 selected stories produce:
 - "summary": an array of UP TO 4 short strings — concise factual context of the news, neutral tone, no hashtags, no emojis-only lines.
 - "tagline": a punchy, self-contained one-line caption naming the real event/person — distinct from any on-image text. Match current Instagram/Facebook trending caption energy (voice, phrasing) for this kind of story rather than a generic recap.
 - "hashtags": an array of EXACTLY 4 strings, each starting with "#", high-virality and relevant (e.g. "#KarnatakaPolitics", "#BengaluruNews"), no spaces inside a tag.
-- "hook_prompt": a string that MUST start EXACTLY with "Generate a 4k, Hook style Image (1:1 ratio), " followed by "Text Language Kannada + English (Mix), " then a dramatic, visually high-impact meme prompt describing the scene.
-- "meme_prompt": a string that MUST start EXACTLY with "Generate a 4k, Memes style Image (1:1 ratio), " followed by "Text Language Kannada + English (Mix), " then a satirical/comedic visual summary of the story.
-- "summary_prompt": a string that MUST start EXACTLY with "Generate a 4k, Summary style Image (1:1 ratio), " followed by "Text Language Kannada + English (Mix), " then a calmer background-context visual prompt.
+- "visual_anchor": ONE string of 25-45 words that LOCKS the look of this story's 3-frame set: the main subject's identity and appearance (face, build, hair, outfit, accessories), the exact location/background, the key props or symbols, and the art style + colour palette + lighting. This exact sentence must be repeated WORD-FOR-WORD inside all 3 image prompts below.
+- "hook_prompt": FRAME 1. A string that MUST start EXACTLY with "Generate a 4k, Hook style Image (1:1 ratio), " then "Text Language Kannada + English (Mix), " then "Continuation frame 1 of 3 - " then the "visual_anchor" text verbatim, then the opening beat: the dramatic scroll-stopping moment that sets the story up, plus the on-image text for this frame.
+- "meme_prompt": FRAME 2. A string that MUST start EXACTLY with "Generate a 4k, Memes style Image (1:1 ratio), " then "Text Language Kannada + English (Mix), " then "Continuation frame 2 of 3, continuing directly from frame 1 - " then the "visual_anchor" text verbatim, then the beat that happens NEXT in that same scene: the satirical/comedic reaction to what frame 1 just showed, plus the on-image text for this frame.
+- "summary_prompt": FRAME 3. A string that MUST start EXACTLY with "Generate a 4k, Summary style Image (1:1 ratio), " then "Text Language Kannada + English (Mix), " then "Continuation frame 3 of 3, continuing directly from frame 2 - " then the "visual_anchor" text verbatim, then the closing beat that follows frame 2: the calm aftermath that explains the news and lands the point, plus the on-image text for this frame.
 
-INTERLINK RULE (applies within each story only, across its own hook_prompt/meme_prompt/summary_prompt): all 3 image prompts for the SAME story MUST depict the SAME visual world — identical main subject/character description (same identity, outfit, distinguishing features), the SAME setting/location, and the SAME core props or symbols, so the 3 images read as one connected set (hook = dramatic close-up angle, meme = satirical exaggerated angle, summary = calm wide/establishing angle of that same scene). Do NOT invent a different character, outfit, or location between the 3 prompts of one story. The 3 prompts of DIFFERENT stories must NOT share subjects/settings with each other.
+CONTINUATION RULE (applies within each story only, across its own hook_prompt/meme_prompt/summary_prompt):
+The 3 images are NOT three camera angles of one moment. They are 3 CONSECUTIVE FRAMES of ONE short story, to be posted in the order 1 -> 2 -> 3 as a single Instagram / Facebook Reel. The viewer must feel the story MOVING FORWARD from frame to frame.
+- Frame 1 (hook_prompt) = the opening beat. The shocking / dramatic moment that stops the scroll.
+- Frame 2 (meme_prompt) = what happens NEXT in that same scene. The satirical, exaggerated, comedic reaction to frame 1.
+- Frame 3 (summary_prompt) = what happens AFTER frame 2. The calm aftermath that explains the news and closes the loop.
+- All 3 frames MUST share the SAME main subject/character (identical identity, face, build, outfit, accessories), the SAME location and background, the SAME props/symbols, and the SAME art style, colour palette and lighting. Repeat the "visual_anchor" text verbatim in all 3 prompts so nothing drifts between frames.
+- Keep the camera treatment CONSISTENT so the frames cut together smoothly. Do NOT change the angle, lens or framing just for variety, and do NOT invent a new character, outfit, location or style between frames.
+- Only these things may change from frame to frame: the subject's ACTION and EXPRESSION, the small story beat happening around them, and the ON-IMAGE TEXT. Everything else stays locked.
+- Each frame's on-image text must read as the next line of one story, not three separate posts: frame 1 sets up, frame 2 punches, frame 3 explains.
+The 3 prompts of DIFFERENT stories must NOT share subjects/settings with each other.
 
 Do NOT put hashtags inside "tagline" or "summary" — they belong ONLY in the "hashtags" array.
 JSON rule: escape any double-quote inside a string value with \\".
-Output must match the provided response schema exactly — every field on every object is required, never omit one.
+Every field on every object is required — never omit one, never return null.
 Return ONLY a raw JSON array of 4 objects, keys:
-"category","headline","timestamp","virality","severity","fallback","summary","tagline","hashtags","hook_prompt","meme_prompt","summary_prompt".`;
+"category","headline","timestamp","virality","severity","fallback","summary","tagline","hashtags","visual_anchor","hook_prompt","meme_prompt","summary_prompt".`;
 }
 
 function normalizeCategory(cat){
@@ -1206,40 +1278,39 @@ function assembleCaption(tagline, summaryLines, hashtags){
    RUN FLOW — single pipeline: search → structure → render
    ============================================================ */
 const KIND_META = {
-  press: { runBtn:"runMemes", icon:"🗞️", emptyIcon:"🗞️", maxItems:4,
-           emptyMsg:"No memes yet. Run the crew to pull live news and craft 4 stories (2 Political Controversy + 2 Breaking News), each with 3 image prompts + a trend-aware caption." }
+  press: { runBtn:"runMemes", stopBtn:"stopMemes", label:"Run Meme Crew", icon:"🗞️", maxItems:4,
+           emptyMsg:"No memes yet. Run the crew to pull live news and craft 4 stories (2 Political Controversy + 2 Breaking News), each as a 3-frame continuation sequence (Hook → Meme → Summary) plus a shared caption." }
 };
 
-function busyFlag(kind, val){
-  if(val!==undefined) busyPress=val; return busyPress;
-}
-function stopBtnId(kind){ return "stopMemes"; }
-
 function setRunning(kind, state){
-  busyFlag(kind, state);
+  busyPress = state;
   const meta = KIND_META[kind];
   const runBtn = document.getElementById(meta.runBtn);
-  const stopBtn = document.getElementById(stopBtnId(kind));
-  runBtn.disabled = state;
+  const stopBtn = document.getElementById(meta.stopBtn);
+  runBtn.disabled = state || isFileProtocol();
   stopBtn.classList.toggle("visible", state);
   runBtn.querySelector(".bi").innerHTML = state ? '<span class="spin"></span>' : meta.icon;
-  runBtn.querySelector(".bt").textContent = state ? "Processing…" : "Run Meme Crew";
+  runBtn.querySelector(".bt").textContent = state ? "Processing…" : meta.label;
   document.getElementById("clearBtn-memes").disabled = state;
 }
 
 function stopRun(kind){
   if(abortCtrl[kind]) abortCtrl[kind].abort();
-  log("Stop requested — finishing current step then halting…", "warn");
+  log("Stopping the run…", "warn");
 }
 
 async function runCrew(kind){
-  if(busyFlag(kind)) return;
+  if(busyPress) return;
+  if(isFileProtocol()){ toast("Can't reach Gemini from a file:// page — host it or use a local server", "err"); return; }
   if(!cfg.gem){ toast("Add your Gemini API key in Settings first", "err"); openSettings(); return; }
+
+  /* Snapshot so a failed re-run doesn't destroy results you already had. */
+  const previous = Array.isArray(data[kind]) ? data[kind].slice() : [];
 
   abortCtrl[kind] = new AbortController();
   const signal = abortCtrl[kind].signal;
   setRunning(kind, true);
-  renderSkeletons(kind, KIND_META[kind].maxItems);
+  renderSkeletons(KIND_META[kind].maxItems);
 
   try{
     log("Fetching fresh headlines via Google Search…", "sys");
@@ -1250,7 +1321,7 @@ async function runCrew(kind){
     log("Deduplicating, grading & drafting 4×3 prompts…", "sys");
     const structured = await callGemini(structurePrompt(rawNewsText), false, null, signal, "structure");
 
-    const cards = extractValidCards(structured, 4);
+    const cards = extractValidCards(structured, KIND_META[kind].maxItems);
     const merged = cards.map(s=>({
       category: normalizeCategory(s.category),
       headline: typeof s.headline==="string" ? s.headline : "",
@@ -1261,10 +1332,15 @@ async function runCrew(kind){
       summary: Array.isArray(s.summary) ? s.summary.slice(0,4) : [],
       tagline: typeof s.tagline==="string" ? s.tagline : "",
       hashtags: Array.isArray(s.hashtags) ? s.hashtags.slice(0,4) : [],
+      visual_anchor: typeof s.visual_anchor==="string" ? s.visual_anchor : "",
       hook_prompt: typeof s.hook_prompt==="string" ? s.hook_prompt : "",
       meme_prompt: typeof s.meme_prompt==="string" ? s.meme_prompt : "",
       summary_prompt: typeof s.summary_prompt==="string" ? s.summary_prompt : "",
     }));
+
+    const incomplete = merged.filter(s=>!s.hook_prompt || !s.meme_prompt || !s.summary_prompt);
+    if(incomplete.length) log(`${incomplete.length} story/stories came back missing one or more frames — re-run for a complete set.`, "warn");
+    if(merged.length < KIND_META[kind].maxItems) log(`Only ${merged.length} of ${KIND_META[kind].maxItems} stories were usable this run.`, "warn");
 
     const anyFallback = merged.some(s=>s.fallback);
     if(anyFallback) log("Category split wasn't clean — using closest-fit stories for some slots.", "warn");
@@ -1274,12 +1350,19 @@ async function runCrew(kind){
     renderCards(kind);
     toast("Meme prompts ready", "ok");
   }catch(err){
+    const restore = previous.length > 0;
     if(err.name === "AbortError"){
       log("Run stopped by user.", "warn");
-      resetLane(kind);
+      if(restore){ data[kind] = previous; renderCards(kind); log("Previous results restored.", "sys"); }
+      else resetLane(kind);
     } else {
       log(`Error: ${err.message}`, "err");
-      renderError(kind, err.message);
+      if(restore){
+        data[kind] = previous; renderCards(kind);
+        log("Kept your previous results — nothing was lost.", "sys");
+      } else {
+        renderError(err.message);
+      }
       toast(err.message, "err");
     }
   }finally{
@@ -1291,27 +1374,26 @@ async function runCrew(kind){
 /* ============================================================
    RENDERING
    ============================================================ */
-function laneEl(kind){ return document.getElementById("cardsPress"); }
-function countEl(kind){ return document.getElementById("countPress"); }
-function setCount(kind, n){ countEl(kind).textContent = n; }
+function laneEl(){ return document.getElementById("cardsPress"); }
+function setCount(n){ document.getElementById("countPress").textContent = n; }
 
-function renderSkeletons(kind, n){
-  const el=laneEl(kind); el.innerHTML="";
+function renderSkeletons(n){
+  const el=laneEl(); el.innerHTML="";
   for(let i=0;i<n;i++){ const s=document.createElement("div"); s.className="skel"; el.appendChild(s); }
-  setCount(kind,0);
+  setCount(0);
 }
-function renderError(kind,msg){
-  const el=laneEl(kind); el.innerHTML="";
+function renderError(msg){
+  const el=laneEl(); el.innerHTML="";
   const d=document.createElement("div"); d.className="empty-state";
   d.innerHTML=`<div class="big">⚠️</div>`;
   const p=document.createElement("p"); p.textContent=msg; d.appendChild(p);
-  el.appendChild(d); setCount(kind,0);
+  el.appendChild(d); setCount(0);
 }
 function renderCards(kind){
-  const el=laneEl(kind); el.innerHTML="";
+  const el=laneEl(); el.innerHTML="";
   const items=data[kind];
   items.forEach((it,i)=>el.appendChild(buildCard(kind,it,i)));
-  setCount(kind, items.length);
+  setCount(items.length);
 }
 
 function buildCard(kind, it, i){
@@ -1335,11 +1417,27 @@ function buildCard(kind, it, i){
   const body=document.createElement("div"); body.className="card-body";
 
   const linkedSet=document.createElement("div"); linkedSet.className="linked-set";
-  linkedSet.appendChild(fieldBlock("Hook style image", "1:1", it.hook_prompt, "prompt-box"));
-  linkedSet.appendChild(fieldBlock("Meme style image", "1:1", it.meme_prompt, "prompt-box"));
-  linkedSet.appendChild(fieldBlock("Summary style image", "1:1", it.summary_prompt, "prompt-box"));
+
+  const flow=document.createElement("div"); flow.className="seq-flow";
+  flow.innerHTML = `<b>1 Hook</b><span class="arw">→</span><b>2 Meme</b><span class="arw">→</span><b>3 Summary</b><span>· post in this order</span>`;
+  linkedSet.appendChild(flow);
+
+  if(it.visual_anchor){
+    linkedSet.appendChild(fieldBlock("Continuity anchor", "locks subject + scene", it.visual_anchor, "anchor-box"));
+  }
+
+  linkedSet.appendChild(fieldBlock("Hook · opening beat", "1:1", it.hook_prompt, "prompt-box", 1));
+  linkedSet.appendChild(fieldBlock("Meme · reaction beat", "1:1", it.meme_prompt, "prompt-box", 2));
+  linkedSet.appendChild(fieldBlock("Summary · closing beat", "1:1", it.summary_prompt, "prompt-box", 3));
+
+  const seqText = buildSequenceText(it);
+  const copyAll=document.createElement("button"); copyAll.className="copyall";
+  copyAll.innerHTML=`<span>🎬</span>Copy all 3 frames in order`;
+  copyAll.addEventListener("click", ()=>copyText(seqText, copyAll, `<span>🎬</span>Copy all 3 frames in order`));
+  linkedSet.appendChild(copyAll);
+
   const linkNote=document.createElement("div"); linkNote.className="linked-note";
-  linkNote.innerHTML = `<span class="link-ic">🔗</span> Linked set — same subject &amp; scene across all 3, different angle each`;
+  linkNote.innerHTML = `<span class="link-ic">🔗</span> Continuation set — one subject, one scene, story moves 1 → 2 → 3 for a Reel`;
   linkedSet.appendChild(linkNote);
   body.appendChild(linkedSet);
 
@@ -1349,22 +1447,56 @@ function buildCard(kind, it, i){
   card.appendChild(body);
   return card;
 }
-function fieldBlock(labelText, pillText, content, boxClass){
+function buildSequenceText(it){
+  const parts=[];
+  if(it.visual_anchor) parts.push(`CONTINUITY ANCHOR (same in all 3 frames)\n${it.visual_anchor}`);
+  parts.push(`FRAME 1 — HOOK\n${it.hook_prompt||"—"}`);
+  parts.push(`FRAME 2 — MEME\n${it.meme_prompt||"—"}`);
+  parts.push(`FRAME 3 — SUMMARY\n${it.summary_prompt||"—"}`);
+  return parts.join("\n\n");
+}
+
+/* Guarded so a missing matchMedia can never take the whole app down. */
+const MOBILE_MQ = (typeof window.matchMedia === "function")
+  ? window.matchMedia("(max-width:640px)")
+  : { matches: window.innerWidth <= 640 };
+function setBlockCollapsed(wrap, collapsed){
+  wrap.classList.toggle("collapsed", collapsed);
+  const head = wrap.querySelector(".fb-head");
+  if(head) head.setAttribute("aria-expanded", String(!collapsed));
+}
+function applyResponsiveCollapse(){
+  document.querySelectorAll(".field-block").forEach(wrap=>{
+    if(wrap.dataset.userToggled === "1") return;
+    setBlockCollapsed(wrap, MOBILE_MQ.matches);
+  });
+}
+
+function fieldBlock(labelText, pillText, content, boxClass, seqNum){
   const wrap=document.createElement("div"); wrap.className="field-block";
-  const lab=document.createElement("label");
+  const head=document.createElement("div");
+  head.className="fb-head";
+  head.setAttribute("role","button");
+  head.setAttribute("tabindex","0");
   const chev=document.createElement("span"); chev.className="fchev";
   chev.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg>`;
-  lab.appendChild(document.createTextNode(labelText));
-  if(pillText){ const pill=document.createElement("span"); pill.className="pill"; pill.textContent=pillText; lab.appendChild(pill); }
+  if(seqNum){ const sq=document.createElement("span"); sq.className="seq"; sq.textContent=seqNum; head.appendChild(sq); }
+  head.appendChild(document.createTextNode(labelText));
+  if(pillText){ const pill=document.createElement("span"); pill.className="pill"; pill.textContent=pillText; head.appendChild(pill); }
   const cp=document.createElement("button"); cp.className="copybtn";
-  cp.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy`;
-  cp.addEventListener("click", (e)=>{ e.stopPropagation(); copyText(content||"", cp); });
-  lab.appendChild(cp);
-  lab.appendChild(chev);
+  const cpHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy`;
+  cp.innerHTML=cpHTML;
+  cp.addEventListener("click", (e)=>{ e.stopPropagation(); copyText(content||"", cp, cpHTML); });
+  head.appendChild(cp);
+  head.appendChild(chev);
   const box=document.createElement("div"); box.className=boxClass; box.textContent=content||"—";
-  lab.addEventListener("click", ()=>wrap.classList.toggle("collapsed"));
-  wrap.append(lab,box);
-  if(window.innerWidth<=640) wrap.classList.add("collapsed");
+  const toggle=()=>{ wrap.dataset.userToggled="1"; setBlockCollapsed(wrap, !wrap.classList.contains("collapsed")); };
+  head.addEventListener("click", toggle);
+  head.addEventListener("keydown", (e)=>{
+    if(e.key==="Enter" || e.key===" "){ e.preventDefault(); toggle(); }
+  });
+  wrap.append(head,box);
+  setBlockCollapsed(wrap, MOBILE_MQ.matches);
   return wrap;
 }
 
@@ -1385,19 +1517,21 @@ function sleep(ms, signal){
 /* ---- clear controls ---- */
 function resetLane(kind){
   const meta = KIND_META[kind];
-  const el = laneEl(kind);
+  const el = laneEl();
   const wrap=document.createElement("div"); wrap.className="empty-state";
-  const big=document.createElement("div"); big.className="big"; big.textContent=meta.emptyIcon;
+  const big=document.createElement("div"); big.className="big"; big.textContent=meta.icon;
   const p=document.createElement("p"); p.textContent=meta.emptyMsg;
   wrap.append(big,p); el.innerHTML=""; el.appendChild(wrap);
-  setCount(kind,0);
+  setCount(0);
 }
-function clearWorkspace(tabName){
-  if(busyFlag("press")){ toast("Wait for the run to finish","err"); return; }
+function clearWorkspace(){
+  if(busyPress){ toast("Wait for the run to finish","err"); return; }
   data.press=[]; resetLane("press");
   document.getElementById("log-memes").innerHTML='<div class="empty">// cleared — run the crew again whenever you like.</div>';
   logClearedMemes=false;
-  toast("Logs & results cleared","ok");
+  apiCalls = 0;
+  document.getElementById("callCount").textContent = "0";
+  toast("Logs, results & call counter cleared","ok");
 }
 function eraseAll(){
   if(!confirm("Erase your saved Gemini key and all preferences from this browser? This also clears current results and logs. This cannot be undone.")) return;
@@ -1410,31 +1544,39 @@ function eraseAll(){
     gem:"", model:"gemini-2.5-flash", window:24,
     region:"Karnataka"
   });
-  document.getElementById("setGem").value="";
   buildModelSelect(FALLBACK_MODELS, null);
-  document.getElementById("setRegion").value="Karnataka";
+  document.getElementById("setModel").value = cfg.model;
   document.getElementById("regionLabel").textContent="Karnataka";
-  document.querySelectorAll("#segWindow button").forEach(b=>b.classList.toggle("active", b.dataset.v==="24"));
+  syncDrawerFromCfg();
   refreshChips(); setModelUI();
-  clearWorkspace("press");
+  clearWorkspace();
   toast("All saved data erased","ok");
 }
-async function copyText(text, btn){
+async function copyText(text, btn, originalHTML){
+  if(!text || !text.trim()){ toast("Nothing to copy yet","err"); return; }
   try{ await navigator.clipboard.writeText(text); }
-  catch(e){ const ta=document.createElement("textarea"); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
-  const orig=btn.innerHTML; btn.classList.add("done");
+  catch(e){
+    try{
+      const ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+      document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+    }catch(e2){ toast("Copy blocked by the browser — select the text manually","err"); return; }
+  }
+  if(btn._copyTimer) clearTimeout(btn._copyTimer);
+  const orig = originalHTML || btn.dataset.origHtml || btn.innerHTML;
+  btn.dataset.origHtml = orig;
+  btn.classList.add("done");
   btn.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>Copied`;
-  setTimeout(()=>{ btn.classList.remove("done"); btn.innerHTML=orig; },1400);
+  btn._copyTimer = setTimeout(()=>{ btn.classList.remove("done"); btn.innerHTML=orig; },1400);
 }
-document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeSettings(); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeSettings(false); });
 
 /* ============================================================
    EVENT WIRING
    ============================================================ */
 function wireStaticButtons(){
   document.getElementById("openSettingsBtn").addEventListener("click", openSettings);
-  document.getElementById("closeSettingsBtn").addEventListener("click", closeSettings);
-  document.getElementById("scrim").addEventListener("click", closeSettings);
+  document.getElementById("closeSettingsBtn").addEventListener("click", ()=>closeSettings(false));
+  document.getElementById("scrim").addEventListener("click", ()=>closeSettings(false));
   document.getElementById("saveSettingsBtn").addEventListener("click", saveSettings);
   document.getElementById("eraseAllBtn").addEventListener("click", eraseAll);
   document.getElementById("toggleGemPw").addEventListener("click", function(){ togglePw("setGem", this); });
@@ -1448,7 +1590,7 @@ function wireStaticButtons(){
   });
   document.getElementById("runMemes").addEventListener("click", ()=>runCrew("press"));
   document.getElementById("stopMemes").addEventListener("click", ()=>stopRun("press"));
-  document.getElementById("clearBtn-memes").addEventListener("click", ()=>clearWorkspace("press"));
+  document.getElementById("clearBtn-memes").addEventListener("click", ()=>clearWorkspace());
   document.getElementById("fileWarningClose").addEventListener("click", ()=>{
     document.getElementById("fileWarning").classList.remove("show");
   });
@@ -1484,13 +1626,16 @@ function wireSegmentedControls(){
 function isFileProtocol(){ return window.location.protocol === "file:"; }
 
 function disableRunButtonsForFileProtocol(){
-  ["runMemes"].forEach(id=>{
+  const why = "Disabled: this page is open via file:// — browsers block Gemini requests from local files. Host it online or serve it over http:// first.";
+  ["runMemes","refreshModelsBtn"].forEach(id=>{
     const btn = document.getElementById(id);
-    if(btn){
-      btn.disabled = true;
-      btn.title = "Disabled: this page is open via file:// — Gemini requests are blocked from local files. Host it online or via a local server first.";
-    }
+    if(btn){ btn.disabled = true; btn.title = why; }
   });
+  const note = document.getElementById("fileNote");
+  if(note){
+    note.hidden = false;
+    note.textContent = "⚠ Opened as a local file (file://) — Gemini calls are blocked by the browser, so Run and Refresh are disabled. Serve this file over http:// (e.g. python3 -m http.server 8000) or host it online.";
+  }
 }
 
 function checkFileProtocol(){
@@ -1517,6 +1662,9 @@ function init(){
   initConsoleState();
   initLaneStates();
   checkFileProtocol();
+
+  if(MOBILE_MQ.addEventListener) MOBILE_MQ.addEventListener("change", applyResponsiveCollapse);
+  else if(MOBILE_MQ.addListener) MOBILE_MQ.addListener(applyResponsiveCollapse);
 }
 
 if (document.readyState === "loading") {
